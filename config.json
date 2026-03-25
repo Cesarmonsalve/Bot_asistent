@@ -1,0 +1,29 @@
+{
+  "welcome": {
+    "enabled": false,
+    "channel_id": null,
+    "message": "👋 Bienvenido/a {user} a **{server}**! Ya somos {count} en la familia. 🎉",
+    "banner_url": "",
+    "auto_role_id": null
+  },
+  "goodbye": {
+    "enabled": false,
+    "channel_id": null
+  },
+  "xp": {
+    "enabled": false,
+    "levelup_channel_id": null
+  },
+  "moderation": {
+    "anti_links": false
+  },
+  "stream_alert": {
+    "enabled": false,
+    "channel_id": null,
+    "kick_username": "",
+    "tiktok_username": "",
+    "message": "🔴 **{username}** está en vivo! Entrá acá → {url}"
+  },
+  "reaction_roles": [],
+  "xp_data": {}
+}
