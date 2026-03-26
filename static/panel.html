@@ -724,7 +724,7 @@
           
           <div class="modules-grid">
             <!-- Modulo 1: Bienvenidas -->
-            <div class="mod-card active" onclick="this.classList.toggle('active')">
+            <div class="mod-card active" onclick="this.classList.toggle('active'); openConfigModal('welcome')">
               <div class="mod-img m-welcome"><i class="ph-fill ph-hand-waving"></i></div>
               <div class="mod-info">
                 <div>
@@ -736,11 +736,11 @@
             </div>
 
             <!-- Modulo 2: Warns -->
-            <div class="mod-card active" onclick="this.classList.toggle('active')">
+            <div class="mod-card active" onclick="this.classList.toggle('active'); openConfigModal('logs')">
               <div class="mod-img m-warns"><i class="ph-fill ph-shield-warning"></i></div>
               <div class="mod-info">
                 <div>
-                  <div class="mod-name">Moderación</div>
+                  <div class="mod-name">Logs de Moderación</div>
                   <div class="mod-stat">Filtro Contextual</div>
                 </div>
                  <div class="mod-status"></div>
@@ -748,11 +748,11 @@
             </div>
 
             <!-- Modulo 3: Tickets -->
-            <div class="mod-card" onclick="this.classList.toggle('active')">
+            <div class="mod-card active" onclick="this.classList.toggle('active'); openConfigModal('tickets')">
               <div class="mod-img m-tickets"><i class="ph-fill ph-ticket"></i></div>
               <div class="mod-info">
                 <div>
-                  <div class="mod-name">Tickets</div>
+                  <div class="mod-name">Tickets Base</div>
                   <div class="mod-stat">Botones Automáticos</div>
                 </div>
                  <div class="mod-status"></div>
@@ -772,21 +772,21 @@
             <div class="list-item">
               <div class="li-img"><i class="ph-fill ph-swatches"></i></div>
               <div class="li-txt">
-                <div class="li-title">Roles y Permisos</div>
-                <div class="li-sub">Gestión tradicional de roles</div>
+                <div class="li-title">Roles de Bienvenida</div>
+                <div class="li-sub">Gestión tradicional de autoroles</div>
               </div>
               <div class="li-date">12 Dec <br>2024</div>
-              <button class="btn-outline">Configurar</button>
+              <button class="btn-outline" onclick="openConfigModal('welcome')">Configurar</button>
             </div>
 
             <div class="list-item">
               <div class="li-img" style="color: #3b82f6;"><i class="ph-fill ph-discord-logo"></i></div>
               <div class="li-txt">
                 <div class="li-title">Canales Fijos</div>
-                <div class="li-sub">Sincronización de IDs de canales fijos</div>
+                <div class="li-sub">Sincronización de IDs de canales fijos (Streams, Despedidas)</div>
               </div>
               <div class="li-date">14 Nov <br>2024</div>
-              <button class="btn-outline">Ajustar</button>
+              <button class="btn-outline" onclick="openConfigModal('channels')">Ajustar</button>
             </div>
 
             <div class="list-item">
@@ -796,7 +796,7 @@
                 <div class="li-sub">Curva de experiencia global</div>
               </div>
               <div class="li-date">20 Oct <br>2024</div>
-              <button class="btn-outline">Configurar</button>
+              <button class="btn-outline" onclick="openConfigModal('xp')">Configurar</button>
             </div>
 
           </div>
@@ -913,7 +913,138 @@
   </div>
 </div>
 
+<!-- SETTINGS MODAL -->
+<div class="modal-overlay" id="config-modal">
+  <div class="modal-box">
+    <div style="display:flex; justify-content:space-between; margin-bottom: 20px;">
+      <h3 style="color: white;" id="modal-title">Configuración Visual</h3>
+      <i class="ph ph-x ai-close" onclick="closeModal()"></i>
+    </div>
+    
+    <div id="modal-body" style="display:flex; flex-direction:column; gap: 15px;">
+      <!-- Dynamic inputs go here via JS -->
+    </div>
+    
+    <div style="margin-top:25px; display:flex; gap:10px; justify-content:flex-end;">
+      <button class="btn-ghost" onclick="closeModal()">Cancelar</button>
+      <button class="btn-primary" onclick="saveModalConfig()">Guardar Cambios</button>
+    </div>
+  </div>
+</div>
+
 <script>
+  let serverConfig = {};
+  let currentModalAction = "";
+
+  window.onload = async () => {
+    try {
+      const res = await fetch('/api/config');
+      serverConfig = await res.json();
+    } catch(e) { console.error("Error loading config", e); }
+  };
+
+  /* Modal Logic */
+  function closeModal() {
+    document.getElementById('config-modal').classList.remove('open');
+  }
+
+  function openConfigModal(type) {
+    const title = document.getElementById('modal-title');
+    const body = document.getElementById('modal-body');
+    currentModalAction = type;
+    body.innerHTML = '';
+    
+    const createField = (label, id, value, placeholder) => {
+      return `<label style="color:var(--text-muted); font-size:12px;">${label}</label>
+              <input type="text" id="${id}" value="${value || ''}" placeholder="${placeholder}" style="margin-top:5px; margin-bottom:0;" />`;
+    };
+
+    if (type === 'welcome') {
+      title.innerText = "Configurar Bienvenidas";
+      const w = serverConfig.welcome || {};
+      body.innerHTML = `
+        ${createField("Canal de Bienvenida (ID)", "cfg-wel-ch", w.channel_id, "123456789")}
+        ${createField("Rol Automático (ID)", "cfg-wel-role", w.auto_role_id, "987654321")}
+        <label style="color:var(--text-dim); font-size:11px; margin-top:10px;">* El mensaje de bienvenida principal ahora está potenciado 100% por Inteligencia Artificial.</label>
+      `;
+    } else if (type === 'tickets') {
+      title.innerText = "Configuración de Tickets";
+      const t = serverConfig.tickets || {};
+      body.innerHTML = `
+        ${createField("Categoría Tickets (ID)", "cfg-tk-cat", t.category_id, "123")}
+        ${createField("Rol de Soporte (ID)", "cfg-tk-role", t.support_role_id, "456")}
+      `;
+    } else if (type === 'logs') {
+      title.innerText = "Canal de Seguridad (Logs)";
+      const l = serverConfig.logs || {};
+      body.innerHTML = `
+        ${createField("Canal Auditoría (ID)", "cfg-log-ch", l.channel_id, "ID del canal secreto")}
+      `;
+    } else if (type === 'channels') {
+      title.innerText = "Otros Canales Fijos";
+      const g = serverConfig.goodbye || {};
+      const s = serverConfig.stream_alert || {};
+      body.innerHTML = `
+        ${createField("Canal Despedidas (ID)", "cfg-gb-ch", g.channel_id, "")}
+        ${createField("Canal Stream Alerts (ID)", "cfg-st-ch", s.channel_id, "")}
+      `;
+    } else if (type === 'xp') {
+      title.innerText = "Sistema de Experiencia (XP)";
+      const x = serverConfig.xp || {};
+      body.innerHTML = `
+        ${createField("Canal Level Up (ID)", "cfg-xp-ch", x.levelup_channel_id, "ID (Opcional)")}
+      `;
+    }
+    document.getElementById('config-modal').classList.add('open');
+  }
+
+  async function saveModalConfig() {
+    let endpoint = "";
+    let payload = {};
+
+    if (currentModalAction === 'welcome') {
+      endpoint = "/api/welcome";
+      payload = { enabled: true, channel_id: document.getElementById('cfg-wel-ch').value, auto_role_id: document.getElementById('cfg-wel-role').value };
+    } else if (currentModalAction === 'tickets') {
+      endpoint = "/api/tickets";
+      payload = { enabled: true, category_id: document.getElementById('cfg-tk-cat').value, support_role_id: document.getElementById('cfg-tk-role').value };
+    } else if (currentModalAction === 'logs') {
+      endpoint = "/api/logs";
+      payload = { enabled: true, channel_id: document.getElementById('cfg-log-ch').value, events: ["member_join","moderation","message_delete"] };
+    } else if (currentModalAction === 'channels') {
+      // Save goodbye first, stream alert later as a quick hack or unified call
+      await fetch('/api/goodbye', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({enabled: true, channel_id: document.getElementById('cfg-gb-ch').value}) });
+      endpoint = "/api/stream_alert";
+      payload = { enabled: true, channel_id: document.getElementById('cfg-st-ch').value };
+    } else if (currentModalAction === 'xp') {
+      endpoint = "/api/xp";
+      payload = { enabled: true, levelup_channel_id: document.getElementById('cfg-xp-ch').value };
+    }
+
+    if (endpoint) {
+      try {
+        const r = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const d = await r.json();
+        if (d.ok) {
+          alert("¡Guardado correctamente! ☑️");
+          closeModal();
+          // Reload config block
+          const res = await fetch('/api/config');
+          serverConfig = await res.json();
+        } else {
+          alert("Error: " + d.error);
+        }
+      } catch (e) {
+        alert("Ocurrió un error de conexión.");
+      }
+    }
+  }
+
+  /* Console Logic */
   function toggleConsole() {
     document.getElementById('ai-console').classList.toggle('open');
     if(document.getElementById('ai-console').classList.contains('open')) {
