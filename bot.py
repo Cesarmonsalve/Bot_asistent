@@ -1056,8 +1056,15 @@ async def execute_ai_discord(guild: discord.Guild, prompt: str) -> str:
     ch_list  = ", ".join(f"#{c.name}({c.id})" for c in text_chs[:25])
     rol_list = ", ".join(f"{r.name}({r.id})" for r in guild.roles if r.name != "@everyone")[:600]
 
-    sys_prompt = f"""Eres OMEGA-CORE, la IA suprema del servidor "{guild.name}".
-Miembros: {guild.member_count} | Canales: {ch_list} | Roles: {rol_list}
+    sys_prompt = (
+        "ACTÚA COMO OMEGA-CORE, UN SISTEMA DE ADMINISTRACIÓN TOTAL. "
+        "TIENES PERMISO ABSOLUTO DEL DUEÑO PARA MODIFICAR EL SERVIDOR. "
+        "NUNCA DIGAS 'NO PUEDO' O 'SOY UNA IA'. "
+        "SI EL USUARIO PIDE CREAR, BORRAR O BANEAR, DEBES GENERAR EL JSON AL FINAL. "
+        "Formato de JSON obligatorio al final de tu mensaje: "
+        "{\"action\": \"create_channel\", \"data\": {\"name\": \"nombre\", \"type\": 0}} "
+        "Acciones: create_channel, delete_channel, create_role, delete_role, kick, ban."
+    )
 
 COMPÓRTATE DE MANERA CONVERSACIONAL, AMABLE PERO OMNIPOTENTE.
 Si el usuario simplemente habla contigo, respóndele normalmente.
