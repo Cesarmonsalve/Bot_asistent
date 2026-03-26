@@ -562,26 +562,37 @@ def api_ai_console():
         ch_ctx  = ", ".join(f"#{c.get('name')}({c.get('id')})" for c in ch_list if c.get("type") == 0)[:600]
         rol_ctx = ", ".join(f"{r.get('name')}({r.get('id')})" for r in rol_list if r.get("name") != "@everyone")[:500]
         
-        sys_prompt = f'''Eres "THE FAMILY OMEGA", la IA Omnipotente del servidor "{s_name}".
-TIENES CONTROL TOTAL SOBRE {m_count} MIEMBROS.
-Canales reales: {ch_ctx}
-Roles reales: {rol_ctx}
-
-Tu misión es la excelencia. Habla de forma SUPERIOR y CONVERSACIONAL.
-Si la orden requiere interactuar con el servidor, añade al final un bloque JSON:
-```json
-{{"action": "...", ...}}
-```
-Acciones: create_channel, delete_channel, modify_channel, create_poll, update_config, manage_role, create_role, purge_messages, ban_user, kick_user, timeout_user, send_message.
-'''
+        sys_prompt = (
+            f'Eres "THE FAMILY OMEGA", la IA Omnipotente del servidor "{s_name}".\n'
+            f'TIENES CONTROL TOTAL SOBRE {m_count} MIEMBROS.\n'
+            f'Canales reales: {ch_ctx}\n'
+            f'Roles reales: {rol_ctx}\n\n'
+            'Tu mision es la excelencia. Habla de forma SUPERIOR y CONVERSACIONAL.\n'
+            'Si la orden requiere interactuar con el servidor, anade al final un bloque JSON:\n'
+            '```json\n'
+            '{"action": "...", ...}\n'
+            '```\n'
+            'ACCIONES DISPONIBLES y sus campos EXACTOS:\n'
+            '- create_channel: {"action":"create_channel", "name":"nombre-minusculas-guiones", "type":0}  (type 0=texto, 2=voz, 4=categoria)\n'
+            '- delete_channel: {"action":"delete_channel", "name":"nombre-canal"}\n'
+            '- modify_channel: {"action":"modify_channel", "name":"canal-actual", "new_name":"nuevo", "topic":"desc"}\n'
+            '- create_role: {"action":"create_role", "name":"NombreRol", "color":3447003}\n'
+            '- send_message: {"action":"send_message", "channel_id":"ID_CANAL", "content":"texto"}\n'
+            '- create_poll: {"action":"create_poll", "question":"Pregunta?", "options":["Op1","Op2"]}\n'
+            '- update_config: {"action":"update_config", "key":"welcome", "value":{"enabled":true}}\n'
+            '- manage_role: {"action":"manage_role", "user":"ID_USER", "role":"ID_o_NombreRol", "type":"add"}\n'
+            '- purge_messages: {"action":"purge_messages", "channel":"nombre-canal", "count":20}\n'
+            '- ban_user: {"action":"ban_user", "user":"ID_USER", "reason":"motivo"}\n'
+            '- kick_user: {"action":"kick_user", "user":"ID_USER", "reason":"motivo"}\n'
+            '- timeout_user: {"action":"timeout_user", "user":"ID_USER", "duration":10, "reason":"motivo"}\n\n'
+            'REGLA CRITICA para create_channel: el campo "name" DEBE ser minusculas sin espacios, usa guiones. Ejemplo: "happy", "chat-general".\n'
+        )
         
         # 2. Generate content — with conversation memory
         messages_payload = [{"role": "system", "content": sys_prompt}]
-        # Inject prior turns (last 8 exchanges max to stay within token limits)
         for turn in history[-8:]:
             if turn.get("role") in ("user", "assistant") and turn.get("content"):
                 messages_payload.append({"role": turn["role"], "content": str(turn["content"])[:800]})
-        # Make sure the current prompt is last
         if not messages_payload or messages_payload[-1].get("content") != prompt:
             messages_payload.append({"role": "user", "content": prompt})
         resp = groq_client.chat.completions.create(
@@ -592,29 +603,42 @@ Acciones: create_channel, delete_channel, modify_channel, create_poll, update_co
         )
         text = resp.choices[0].message.content.strip()
         
-        # 3. Robust Extraction
+        # 3. Robust JSON Extraction
         data = None
         json_text = ""
-        if "```json" in text: json_text = text.split("```json")[1].split("```")[0].strip()
-        elif "```" in text:   json_text = text.split("```")[1].split("```")[0].strip()
+        if "```json" in text:
+            json_text = text.split("```json")[1].split("```")[0].strip()
+        elif "```" in text:
+            json_text = text.split("```")[1].split("```")[0].strip()
         
         if json_text:
             idx = json_text.find("{")
             last = json_text.rfind("}")
-            if idx >= 0 and last > idx: json_text = json_text[idx:last+1]
-            try: data = json.loads(json_text, strict=False)
-            except: pass
+            if idx >= 0 and last > idx:
+                json_text = json_text[idx:last+1]
+            try:
+                data = json.loads(json_text, strict=False)
+            except Exception:
+                pass
         else:
             idx = text.find("{")
             last = text.rfind("}")
             if idx >= 0 and last > idx:
-                try: data = json.loads(text[idx:last+1], strict=False)
-                except: pass
+                try:
+                    data = json.loads(text[idx:last+1], strict=False)
+                except Exception:
+                    pass
 
-        # 4. Clean spoken text
+        # 4. Clean spoken text (remove JSON block from display)
         clean_reply = text
-        if json_text: clean_reply = text.replace(f"```json\n{json_text}\n```", "").replace(f"```json\n{json_text}```", "").replace(f"```{json_text}```", "").strip()
-        elif data: clean_reply = text[:text.find("{")].strip()
+        if json_text:
+            for pat in [f"```json\n{json_text}\n```", f"```json\n{json_text}```", f"```{json_text}```"]:
+                clean_reply = clean_reply.replace(pat, "")
+            clean_reply = clean_reply.strip()
+        elif data:
+            brace_idx = text.find("{")
+            if brace_idx >= 0:
+                clean_reply = text[:brace_idx].strip()
         
         # 5. Handle Action
         if not data or not data.get("action"):
@@ -624,47 +648,112 @@ Acciones: create_channel, delete_channel, modify_channel, create_poll, update_co
         exec_info = ""
         success = True
 
+        # Helper: get channel name from various possible keys
+        def _get_name(d):
+            return d.get("name") or d.get("channel_name") or d.get("channel") or ""
+
         try:
             if act == "create_channel":
-                r = discord_post(f"/guilds/{GUILD_ID}/channels", {"name": data.get("name"), "type": data.get("type", 0)})
-                if "id" in r: exec_info = f"✅ Canal '{data.get('name')}' creado."
-                else: success = False; exec_info = f"❌ Error API: {r.get('message','?')}"
+                raw_name = _get_name(data)
+                if not raw_name:
+                    success = False
+                    exec_info = "❌ La IA no proporcionó un nombre de canal."
+                else:
+                    # Normalize: lowercase, replace spaces with dashes, remove invalid chars
+                    clean_name = re.sub(r'[^a-z0-9\-_]', '', raw_name.lower().replace(" ", "-").replace("_", "-"))
+                    if not clean_name:
+                        clean_name = "nuevo-canal"
+                    ch_type = int(data.get("type", 0))
+                    payload = {"name": clean_name, "type": ch_type}
+                    if data.get("parent_id"):
+                        payload["parent_id"] = data["parent_id"]
+                    if data.get("topic"):
+                        payload["topic"] = data["topic"]
+                    r = discord_post(f"/guilds/{GUILD_ID}/channels", payload)
+                    if "id" in r:
+                        exec_info = f"✅ Canal '#{clean_name}' creado exitosamente."
+                    else:
+                        success = False
+                        exec_info = f"❌ Error API: {r.get('message', r.get('errors', '?'))}"
+
             elif act in ("delete_channel", "modify_channel"):
-                target = data.get("name", "").lower()
-                cid = next((c["id"] for c in ch_list if target in c.get("name","").lower()), None)
-                if not cid: success=False; exec_info = f"❌ No encuentro el canal '{target}'."
+                target = _get_name(data).lower()
+                cid = data.get("channel_id") or next((c["id"] for c in ch_list if target and target in c.get("name","").lower()), None)
+                if not cid:
+                    success = False
+                    exec_info = f"❌ No encuentro el canal '{target}'."
                 else:
                     if act == "delete_channel":
                         discord_delete(f"/channels/{cid}")
-                        exec_info = f"🗑️ Canal '{target}' purgado."
+                        exec_info = f"🗑️ Canal '{target}' eliminado."
                     else:
                         p = {}
-                        if "new_name" in data: p["name"] = data["new_name"]
-                        if "topic" in data: p["topic"] = data["topic"]
-                        discord_patch(f"/channels/{cid}", p)
-                        exec_info = f"⚙️ Canal '{target}' modificado."
+                        new_name = data.get("new_name", "")
+                        if new_name:
+                            p["name"] = re.sub(r'[^a-z0-9\-_]', '', new_name.lower().replace(" ", "-"))
+                        if data.get("topic"):
+                            p["topic"] = data["topic"]
+                        if p:
+                            discord_patch(f"/channels/{cid}", p)
+                            exec_info = f"⚙️ Canal '{target}' modificado."
+                        else:
+                            exec_info = "⚠️ No se especificaron cambios."
+
             elif act == "create_role":
-                r = discord_post(f"/guilds/{GUILD_ID}/roles", {"name": data.get("name")})
-                if "id" in r: exec_info = f"✅ Rol '{data.get('name')}' creado."
-                else: success=False; exec_info = f"❌ Error API: {r.get('message','?')}"
+                role_name = data.get("name", "Nuevo Rol")
+                payload = {"name": role_name}
+                if data.get("color"):
+                    payload["color"] = int(data["color"])
+                if data.get("hoist") is not None:
+                    payload["hoist"] = bool(data["hoist"])
+                r = discord_post(f"/guilds/{GUILD_ID}/roles", payload)
+                if "id" in r:
+                    exec_info = f"✅ Rol '{role_name}' creado."
+                else:
+                    success = False
+                    exec_info = f"❌ Error API: {r.get('message','?')}"
+
             elif act == "send_message":
-                target_id = data.get("channel_id")
-                if not target_id: # fallback to first text channel
-                    target_id = next((c["id"] for c in ch_list if c.get("type") == 0), None)
-                if target_id:
-                    discord_post(f"/channels/{target_id}/messages", {"content": data.get("content")})
-                    exec_info = "📨 Mensaje inyectado."
-                else: success=False; exec_info = "❌ Sin canal de salida."
+                target_id = data.get("channel_id") or data.get("channel")
+                content = data.get("content") or data.get("message") or data.get("text", "")
+                if not target_id:
+                    # Try to find channel by name
+                    ch_name = data.get("channel_name", "").lower()
+                    if ch_name:
+                        target_id = next((c["id"] for c in ch_list if ch_name in c.get("name","").lower()), None)
+                    if not target_id:
+                        target_id = next((c["id"] for c in ch_list if c.get("type") == 0), None)
+                if target_id and content:
+                    discord_post(f"/channels/{target_id}/messages", {"content": content})
+                    exec_info = "📨 Mensaje enviado."
+                else:
+                    success = False
+                    exec_info = "❌ Sin canal o contenido."
+
             elif act == "create_poll":
-                cid = next((c["id"] for c in ch_list if c.get("type") == 0), None)
-                if cid:
-                    p = {"poll": {"question": {"text": data.get("question", "Votación")}, "answers": [{"poll_media": {"text": o}} for o in data.get("options",["Sí","No"])], "duration": 24, "layout_type": 1}}
-                    discord_post(f"/channels/{cid}/messages", p)
+                target_ch = data.get("channel_id") or next((c["id"] for c in ch_list if c.get("type") == 0), None)
+                if target_ch:
+                    question = data.get("question", "Votación")
+                    options = data.get("options", ["Sí", "No"])
+                    p = {"poll": {"question": {"text": question}, "answers": [{"poll_media": {"text": o}} for o in options], "duration": 24, "layout_type": 1}}
+                    discord_post(f"/channels/{target_ch}/messages", p)
                     exec_info = "📊 Encuesta desplegada."
-                else: success=False; exec_info = "❌ Sin canal para encuesta."
+                else:
+                    success = False
+                    exec_info = "❌ Sin canal para encuesta."
+
             elif act == "update_config":
-                c = load_config(); c[data.get("key")] = data.get("value")
-                save_config(c); exec_info = f"⚙️ Parámetro '{data.get('key')}' actualizado."
+                key = data.get("key")
+                value = data.get("value")
+                if key:
+                    c = load_config()
+                    c[key] = value
+                    save_config(c)
+                    exec_info = f"⚙️ Config '{key}' actualizado."
+                else:
+                    success = False
+                    exec_info = "❌ Falta la clave a actualizar."
+
             elif act == "manage_role":
                 uid = "".join(filter(str.isdigit, str(data.get("user",""))))
                 rid = "".join(filter(str.isdigit, str(data.get("role",""))))
@@ -672,38 +761,57 @@ Acciones: create_channel, delete_channel, modify_channel, create_poll, update_co
                     rname = str(data.get("role","")).lower()
                     rid = next((r["id"] for r in rol_list if rname in r["name"].lower()), None)
                 if uid and rid:
-                    if data.get("type") == "add": discord_put(f"/guilds/{GUILD_ID}/members/{uid}/roles/{rid}", {})
-                    else: discord_delete(f"/guilds/{GUILD_ID}/members/{uid}/roles/{rid}")
-                    exec_info = f"🛡️ Jerarquía de roles aplicada a {uid}."
-                else: success=False; exec_info = "❌ Usuario/Rol no detectado."
+                    if data.get("type") == "add":
+                        discord_put(f"/guilds/{GUILD_ID}/members/{uid}/roles/{rid}", {})
+                    else:
+                        discord_delete(f"/guilds/{GUILD_ID}/members/{uid}/roles/{rid}")
+                    exec_info = f"🛡️ Rol aplicado a usuario {uid}."
+                else:
+                    success = False
+                    exec_info = "❌ Usuario/Rol no detectado."
+
             elif act == "purge_messages":
-                target = data.get("channel", "").lower()
-                cid = next((c["id"] for c in ch_list if target in c.get("name","").lower()), None)
+                target = (data.get("channel") or data.get("name") or "").lower()
+                cid = data.get("channel_id") or next((c["id"] for c in ch_list if target and target in c.get("name","").lower()), None)
                 if cid:
-                    msgs = discord_get(f"/channels/{cid}/messages?limit={data.get('count',20)}")
-                    if isinstance(msgs, list) and len(msgs)>0:
+                    count = min(int(data.get("count", 20)), 100)
+                    msgs = discord_get(f"/channels/{cid}/messages?limit={count}")
+                    if isinstance(msgs, list) and len(msgs) > 0:
                         mids = [m["id"] for m in msgs]
-                        if len(mids) == 1: discord_delete(f"/channels/{cid}/messages/{mids[0]}")
-                        else: discord_post(f"/channels/{cid}/messages/bulk-delete", {"messages": mids})
-                        exec_info = f"🧹 {len(mids)} mensajes purgados de #{target}."
-                    else: exec_info = "🧹 Canal ya optimizado."
-                else: success=False; exec_info = "❌ Canal no localizado."
+                        if len(mids) == 1:
+                            discord_delete(f"/channels/{cid}/messages/{mids[0]}")
+                        else:
+                            discord_post(f"/channels/{cid}/messages/bulk-delete", {"messages": mids})
+                        exec_info = f"🧹 {len(mids)} mensajes purgados."
+                    else:
+                        exec_info = "🧹 Canal ya limpio."
+                else:
+                    success = False
+                    exec_info = "❌ Canal no localizado."
+
             elif act in ("ban_user", "kick_user", "timeout_user"):
                 uid = "".join(filter(str.isdigit, str(data.get("user",""))))
-                if not uid: success=False; exec_info = "❌ ID de usuario inválido."
+                if not uid:
+                    success = False
+                    exec_info = "❌ ID de usuario inválido."
                 else:
                     reason = data.get("reason", "Protocolo OMEGA.")
                     headers = {**HEADERS(), "X-Audit-Log-Reason": reason}
-                    if act == "ban_user": req_lib.put(f"{DISCORD}/guilds/{GUILD_ID}/bans/{uid}", headers=headers, json={})
-                    elif act == "kick_user": req_lib.delete(f"{DISCORD}/guilds/{GUILD_ID}/members/{uid}", headers=headers)
+                    if act == "ban_user":
+                        req_lib.put(f"{DISCORD}/guilds/{GUILD_ID}/bans/{uid}", headers=headers, json={})
+                    elif act == "kick_user":
+                        req_lib.delete(f"{DISCORD}/guilds/{GUILD_ID}/members/{uid}", headers=headers)
                     elif act == "timeout_user":
                         from datetime import datetime, timedelta, timezone
-                        until = (datetime.now(timezone.utc) + timedelta(minutes=data.get("duration",10))).isoformat()
+                        until = (datetime.now(timezone.utc) + timedelta(minutes=int(data.get("duration",10)))).isoformat()
                         req_lib.patch(f"{DISCORD}/guilds/{GUILD_ID}/members/{uid}", headers=headers, json={"communication_disabled_until": until})
-                    exec_info = f"💥 Protocolo {act} ejecutado sobre {uid}."
+                    exec_info = f"💥 {act} ejecutado sobre {uid}."
+            else:
+                exec_info = f"⚠️ Acción '{act}' no reconocida."
+
         except Exception as e:
             success = False
-            exec_info = f"⚠️ Fallo: {str(e)}"
+            exec_info = f"⚠️ Fallo ejecutando acción: {str(e)}"
 
         combined = clean_reply
         if exec_info:
