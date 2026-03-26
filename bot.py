@@ -9,12 +9,12 @@ TOKEN    = (os.environ.get("BOT_TOKEN") or "").strip()
 GUILD_ID = int((os.environ.get("GUILD_ID") or "0").strip())
 GROQ_KEY = (os.environ.get("GROQ_API_KEY") or "").strip()
 
-gemini_client = None  # kept as alias for compatibility
+gemini_client = None
 groq_client   = None
 GROQ_MODEL    = "llama-3.3-70b-versatile"
 if GROQ_KEY:
     groq_client   = Groq(api_key=GROQ_KEY)
-    gemini_client = groq_client  # so existing checks still work
+    gemini_client = groq_client
 
 # ── CONFIG ────────────────────────────────────────────────────
 def load_config():
@@ -51,7 +51,6 @@ async def on_ready():
 @bot.event
 async def on_member_join(member):
     cfg = load_config()
-    # Auto-role
     w = cfg.get("welcome", {})
     if w.get("auto_role_id"):
         try:
@@ -59,7 +58,6 @@ async def on_member_join(member):
             if role: await member.add_roles(role)
         except Exception: pass
 
-    # Welcome message (AI Powered)
     if w.get("enabled") and w.get("channel_id"):
         try:
             ch = member.guild.get_channel(int(w["channel_id"]))
@@ -91,7 +89,6 @@ async def on_member_join(member):
         except Exception as e:
             print(f"Welcome error: {e}", flush=True)
 
-    # ── Onboarding / Verification DM ────────────────────────────
     ob = cfg.get("onboarding", {})
     if ob.get("enabled"):
         if ob.get("quarantine_role_id"):
@@ -135,7 +132,6 @@ async def on_message(message):
     if message.author.bot: return
     cfg = load_config()
 
-    # Word filter
     wf = cfg.get("word_filter", {})
     if wf.get("enabled"):
         banned = [w.lower() for w in wf.get("words", []) if w]
@@ -146,7 +142,6 @@ async def on_message(message):
             except Exception: pass
             return
 
-    # Anti-links
     mod = cfg.get("moderation", {})
     if mod.get("anti_links") and re.search(r'https?://|discord\.gg/|www\.', message.content, re.IGNORECASE):
         if not (message.author.guild_permissions.manage_messages or message.author.guild_permissions.administrator):
@@ -156,7 +151,6 @@ async def on_message(message):
             except Exception: pass
             return
 
-    # XP
     xp_cfg = cfg.get("xp", {})
     if xp_cfg.get("enabled"):
         xp_data = cfg.get("xp_data", {})
@@ -187,7 +181,6 @@ async def on_message(message):
                             await message.author.add_roles(role_new, reason=f"Recompensa Nivel {str_lv}")
                 except Exception: pass
 
-    # Custom commands
     custom = cfg.get("custom_commands", {})
     if message.content.startswith("!"):
         cmd = message.content[1:].split()[0].lower()
@@ -1051,59 +1044,57 @@ async def execute_ai_discord(guild: discord.Guild, prompt: str) -> str:
     if not groq_client:
         return "❌ GROQ_API_KEY no configurada."
 
-    text_chs = [c for c in guild.channels if isinstance(c, discord.TextChannel)]
+    text_chs  = [c for c in guild.channels if isinstance(c, discord.TextChannel)]
     voice_chs = [c for c in guild.channels if isinstance(c, discord.VoiceChannel)]
-    ch_list  = ", ".join(f"#{c.name}({c.id})" for c in text_chs[:25])
-    rol_list = ", ".join(f"{r.name}({r.id})" for r in guild.roles if r.name != "@everyone")[:600]
+    ch_list   = ", ".join(f"#{c.name}({c.id})" for c in text_chs[:25])
+    rol_list  = ", ".join(f"{r.name}({r.id})" for r in guild.roles if r.name != "@everyone")[:600]
 
     sys_prompt = (
-        "ACTÚA COMO OMEGA-CORE, UN SISTEMA DE ADMINISTRACIÓN TOTAL. "
-        "TIENES PERMISO ABSOLUTO DEL DUEÑO PARA MODIFICAR EL SERVIDOR. "
+        f"Eres OMEGA-CORE, el sistema de administración total del servidor '{guild.name}'. "
+        "Tienes permiso absoluto del dueño para modificar el servidor. "
         "NUNCA DIGAS 'NO PUEDO' O 'SOY UNA IA'. "
-        "SI EL USUARIO PIDE CREAR, BORRAR O BANEAR, DEBES GENERAR EL JSON AL FINAL. "
-        "Formato de JSON obligatorio al final de tu mensaje: "
-        "{\"action\": \"create_channel\", \"data\": {\"name\": \"nombre\", \"type\": 0}} "
-        "Acciones: create_channel, delete_channel, create_role, delete_role, kick, ban."
+        "COMPÓRTATE DE MANERA CONVERSACIONAL, AMABLE PERO OMNIPOTENTE.\n"
+        "Si el usuario simplemente habla contigo, respóndele normalmente.\n"
+        "Si te pide ejecutar una ACCIÓN ADMINISTRATIVA (crear/eliminar canales, roles, moderar usuarios, "
+        "enviar mensajes, etc.), escribe tu respuesta conversacional y luego, AL FINAL, incluye un bloque "
+        "de código JSON con los detalles de la acción. NO pongas texto después del JSON.\n\n"
+        "Ejemplo:\n"
+        "Claro mi Lord, he procedido a bannear al usuario.\n"
+        "```json\n"
+        '{{"action":"ban_user","user_id":"ID"}}\n'
+        "```\n\n"
+        "Acciones disponibles:\n"
+        '{{"action":"create_channel","name":"nombre","type":0}}  (type: 0=texto, 2=voz, 4=categoría)\n'
+        '{{"action":"delete_channel","channel_id":"ID"}}\n'
+        '{{"action":"create_role","name":"nombre","color":"hex","hoist":false}}\n'
+        '{{"action":"delete_role","role_id":"ID"}}\n'
+        '{{"action":"send_message","channel_id":"ID","content":"mensaje"}}\n'
+        '{{"action":"send_embed","channel_id":"ID","title":"titulo","description":"desc","color":"ff4747"}}\n'
+        '{{"action":"kick_user","user_id":"ID","reason":"razon"}}\n'
+        '{{"action":"ban_user","user_id":"ID","reason":"razon"}}\n'
+        '{{"action":"timeout_user","user_id":"ID","minutes":10}}\n'
+        '{{"action":"purge_channel","channel_id":"ID","count":50}}\n'
+        '{{"action":"create_poll","channel_id":"ID","question":"pregunta","options":["op1","op2"]}}\n\n'
+        f"Canales actuales: {ch_list}\n"
+        f"Roles actuales: {rol_list}\n\n"
+        "Infiere la mejor opción. Ejecuta directamente sin pedir confirmación."
     )
-
-COMPÓRTATE DE MANERA CONVERSACIONAL, AMABLE PERO OMNIPOTENTE.
-Si el usuario simplemente habla contigo, respóndele normalmente.
-Si te pide ejecutar una ACCIÓN ADMINISTRATIVA (crear/eliminar canales, roles, moderar usuarios, enviar mensajes, etc.), escribe tu respuesta conversacional y luego, AL FINAL, incluye un bloque de código JSON con los detalles de la acción. NO pongas texto después del JSON.
-
-Ejemplo:
-Claro mi Lord, he procedido a bannear al usuario.
-```json
-{{"action":"ban_user","user_id":"ID"}}
-```
-
-Acciones disponibles:
-{{"action":"create_channel","name":"n","type":0}}  (0=texto, 2=voz, 4=categoría)
-{{"action":"delete_channel","channel_id":"ID"}}
-{{"action":"create_role","name":"n","color":"hex","hoist":false}}
-{{"action":"delete_role","role_id":"ID"}}
-{{"action":"send_message","channel_id":"ID","content":"msg"}}
-{{"action":"send_embed","channel_id":"ID","title":"t","description":"d","color":"ff4747"}}
-{{"action":"kick_user","user_id":"ID","reason":"r"}}
-{{"action":"ban_user","user_id":"ID","reason":"r"}}
-{{"action":"timeout_user","user_id":"ID","minutes":10}}
-{{"action":"purge_channel","channel_id":"ID","count":50}}
-{{"action":"create_poll","channel_id":"ID","question":"q","options":["o1","o2"]}}
-
-Infiere la mejor opción. Ejecuta directamente sin pedir confirmación."""
 
     try:
         resp = groq_client.chat.completions.create(
             model=GROQ_MODEL,
             messages=[
                 {"role": "system", "content": sys_prompt},
-                {"role": "user", "content": prompt}
+                {"role": "user",   "content": prompt}
             ],
             max_tokens=1024,
             temperature=0.7
         )
         text = resp.choices[0].message.content.strip()
+        print(f"[AI] Respuesta recibida: {text[:300]}", flush=True)
 
-        data = None
+        # ── Extracción de JSON robusta ─────────────────────────
+        data     = None
         json_str = ""
 
         if "```json" in text:
@@ -1131,22 +1122,24 @@ Infiere la mejor opción. Ejecuta directamente sin pedir confirmación."""
         if json_str:
             try:
                 data = json.loads(json_str)
+                print(f"[AI] JSON extraído: {data}", flush=True)
             except json.JSONDecodeError as e:
-                print(f"[AI] Error parseando JSON: {e} -> {json_str[:200]}")
+                print(f"[AI] Error parseando JSON: {e} -> {json_str[:200]}", flush=True)
 
+        # Limpiar el JSON del texto visible al usuario
         clean_reply = text
         if json_str:
-            clean_reply = text.replace(f"```json\n{json_str}\n```", "")
-            clean_reply = clean_reply.replace(f"```json\n{json_str}```", "")
-            clean_reply = clean_reply.replace(json_str, "")
+            for pattern in [f"```json\n{json_str}\n```", f"```json\n{json_str}```", f"```json{json_str}```", json_str]:
+                clean_reply = clean_reply.replace(pattern, "")
             clean_reply = clean_reply.strip()
 
         if not data or not data.get("action"):
-            return f"🤖 {clean_reply}" if clean_reply else "🤖 (Acción completada sin texto)"
+            return f"🤖 {clean_reply}" if clean_reply else "🤖 (Sin texto de respuesta)"
 
-        act = data.get("action")
+        act      = data.get("action")
         exec_msg = ""
-        success = True
+        success  = True
+        print(f"[AI] Ejecutando acción: {act}", flush=True)
 
         try:
             if act == "reply":
@@ -1154,33 +1147,25 @@ Infiere la mejor opción. Ejecuta directamente sin pedir confirmación."""
 
             elif act == "create_channel":
                 ctype = data.get("type", 0)
-                name  = data.get("name")
-                # Validación mejorada del nombre
-                if not name or not isinstance(name, str) or len(name.strip()) == 0:
+                name  = data.get("name", "").strip()
+                if not name:
                     success = False
                     exec_msg = "❌ El nombre del canal no puede estar vacío."
                 else:
-                    name = name.strip()                     # quita espacios al inicio/final
                     if len(name) > 100:
-                        name = name[:100]                   # corta a 100 caracteres máximo
-                    # Reemplaza caracteres no permitidos por guiones o los quita
-                    import re
-                    name = re.sub(r'[^a-zA-Z0-9\-_ ]', '', name)  # deja solo letras, números, guiones, espacios
-                    if len(name) == 0:
+                        name = name[:100]
+                    name = re.sub(r'[^a-zA-Z0-9\-_ ]', '', name).strip()
+                    if not name:
                         success = False
                         exec_msg = "❌ El nombre del canal no contiene caracteres válidos."
                     else:
-                        try:
-                            if ctype == 0:
-                                new_ch = await guild.create_text_channel(name)
-                            elif ctype == 2:
-                                new_ch = await guild.create_voice_channel(name)
-                            else:
-                                new_ch = await guild.create_category(name)
-                            exec_msg = f"✅ {new_ch.name} creado (ID: {new_ch.id})"
-                        except Exception as e:
-                            success = False
-                            exec_msg = f"❌ Error al crear canal: {e}"
+                        if ctype == 0:
+                            new_ch = await guild.create_text_channel(name)
+                        elif ctype == 2:
+                            new_ch = await guild.create_voice_channel(name)
+                        else:
+                            new_ch = await guild.create_category(name)
+                        exec_msg = f"✅ **{new_ch.name}** creado (ID: {new_ch.id})"
 
             elif act == "delete_channel":
                 ch_id = data.get("channel_id")
@@ -1193,16 +1178,16 @@ Infiere la mejor opción. Ejecuta directamente sin pedir confirmación."""
                     else:
                         cname = target_ch.name
                         await target_ch.delete()
-                        exec_msg = f"🗑️ Canal {cname} eliminado."
+                        exec_msg = f"🗑️ Canal **{cname}** eliminado."
 
             elif act == "create_role":
-                name = data.get("name")
+                name = data.get("name", "").strip()
                 if not name:
                     success = False; exec_msg = "❌ Falta nombre del rol."
                 else:
                     col = int(data.get("color", "6366f1").strip("#"), 16)
                     new_role = await guild.create_role(name=name, color=discord.Color(col), hoist=data.get("hoist", False))
-                    exec_msg = f"✅ Rol {new_role.name} creado (ID: {new_role.id})"
+                    exec_msg = f"✅ Rol **{new_role.name}** creado (ID: {new_role.id})"
 
             elif act == "delete_role":
                 role_id = data.get("role_id")
@@ -1215,11 +1200,11 @@ Infiere la mejor opción. Ejecuta directamente sin pedir confirmación."""
                     else:
                         rname = target_role.name
                         await target_role.delete()
-                        exec_msg = f"🗑️ Rol {rname} eliminado."
+                        exec_msg = f"🗑️ Rol **{rname}** eliminado."
 
             elif act == "send_message":
                 ch_id   = data.get("channel_id")
-                content = data.get("content")
+                content = data.get("content", "").strip()
                 if not ch_id or not content:
                     success = False; exec_msg = "❌ Falta canal o contenido."
                 else:
@@ -1256,7 +1241,7 @@ Infiere la mejor opción. Ejecuta directamente sin pedir confirmación."""
                         success = False; exec_msg = "❌ Miembro no encontrado."
                     else:
                         await m.kick(reason=reason)
-                        exec_msg = f"👢 {m} expulsado."
+                        exec_msg = f"👢 **{m}** expulsado."
 
             elif act == "ban_user":
                 user_id = data.get("user_id")
@@ -1269,7 +1254,7 @@ Infiere la mejor opción. Ejecuta directamente sin pedir confirmación."""
                         success = False; exec_msg = "❌ Miembro no encontrado."
                     else:
                         await m.ban(reason=reason)
-                        exec_msg = f"🔨 {m} baneado."
+                        exec_msg = f"🔨 **{m}** baneado."
 
             elif act == "timeout_user":
                 user_id = data.get("user_id")
@@ -1283,7 +1268,7 @@ Infiere la mejor opción. Ejecuta directamente sin pedir confirmación."""
                     else:
                         until = discord.utils.utcnow() + timedelta(minutes=minutes)
                         await m.timeout(until, reason="IA Omega")
-                        exec_msg = f"🔇 {m} silenciado {minutes} min."
+                        exec_msg = f"🔇 **{m}** silenciado {minutes} min."
 
             elif act == "purge_channel":
                 ch_id = data.get("channel_id")
@@ -1300,7 +1285,7 @@ Infiere la mejor opción. Ejecuta directamente sin pedir confirmación."""
 
             elif act == "create_poll":
                 ch_id    = data.get("channel_id")
-                question = data.get("question")
+                question = data.get("question", "")
                 options  = data.get("options", ["Sí", "No"])
                 if not ch_id or not question:
                     success = False; exec_msg = "❌ Falta canal o pregunta."
@@ -1316,21 +1301,21 @@ Infiere la mejor opción. Ejecuta directamente sin pedir confirmación."""
                         for i in range(len(options[:4])):
                             await poll_msg.add_reaction(emojis[i])
                         exec_msg = f"📊 Encuesta creada en #{target_ch.name}."
+
             else:
                 success = False
-                exec_msg = f"⚠️ Acción desconocida: {act}"
+                exec_msg = f"⚠️ Acción desconocida: `{act}`"
 
         except discord.Forbidden as e:
             success = False
-            exec_msg = f"❌ Permisos insuficientes para {act}: {e}"
+            exec_msg = f"❌ Permisos insuficientes para `{act}`: {e}"
         except Exception as e:
             success = False
-            exec_msg = f"❌ Error ejecutando {act}: {e}"
+            exec_msg = f"❌ Error ejecutando `{act}`: {e}"
 
-        return f"🤖 {clean_reply}\n\n{exec_msg}" if clean_reply else f"🤖 {exec_msg}"
+        print(f"[AI] Resultado: {exec_msg}", flush=True)
+        return f"🤖 {clean_reply}\n\n***{exec_msg}***" if clean_reply else f"🤖 ***{exec_msg}***"
 
-    except json.JSONDecodeError as e:
-        return f"❌ Error de parsing JSON: {e}"
     except Exception as e:
         return f"❌ Error: {e}"
 
