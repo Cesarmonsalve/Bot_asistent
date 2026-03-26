@@ -1099,6 +1099,9 @@
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div><label style="color:var(--text-muted);font-size:12px;">Canal level-up (ID)</label><input type="text" id="s-xp-ch" placeholder="ID del canal" style="width:100%;background:var(--bg);border:1px solid var(--border);padding:9px;border-radius:8px;color:white;margin-top:5px;"></div>
           <div style="display:flex;align-items:flex-end;gap:10px;"><label style="color:var(--text-muted);font-size:12px;display:flex;align-items:center;gap:8px;"><input type="checkbox" id="s-xp-enabled" style="accent-color:var(--accent);"> XP Activo</label></div>
+          <div><label style="color:var(--text-muted);font-size:12px;">Rol Nivel 5 (ID)</label><input type="text" id="s-xp-r5" placeholder="Recompensa nivel 5" style="width:100%;background:var(--bg);border:1px solid var(--border);padding:9px;border-radius:8px;color:white;margin-top:5px;"></div>
+          <div><label style="color:var(--text-muted);font-size:12px;">Rol Nivel 10 (ID)</label><input type="text" id="s-xp-r10" placeholder="Recompensa nivel 10" style="width:100%;background:var(--bg);border:1px solid var(--border);padding:9px;border-radius:8px;color:white;margin-top:5px;"></div>
+          <div><label style="color:var(--text-muted);font-size:12px;">Rol Nivel 20 (ID)</label><input type="text" id="s-xp-r20" placeholder="Recompensa nivel 20" style="width:100%;background:var(--bg);border:1px solid var(--border);padding:9px;border-radius:8px;color:white;margin-top:5px;"></div>
         </div>
       </div>
 
@@ -1483,6 +1486,9 @@
     set('s-log-ch',   cfg.logs?.channel_id);
     set('s-xp-ch',    cfg.xp?.levelup_channel_id);
     set('s-xp-enabled', cfg.xp?.enabled);
+    set('s-xp-r5', cfg.xp?.role_rewards?.["5"]);
+    set('s-xp-r10', cfg.xp?.role_rewards?.["10"]);
+    set('s-xp-r20', cfg.xp?.role_rewards?.["20"]);
     set('s-mod-links',  cfg.moderation?.anti_links);
     set('s-mod-spam',   cfg.moderation?.anti_spam);
     set('s-wf-enabled', cfg.word_filter?.enabled);
@@ -1534,7 +1540,7 @@
       fetch('/api/welcome',      {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:true,channel_id:g('s-wel-ch'),auto_role_id:g('s-wel-role')})}),
       fetch('/api/goodbye',      {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:true,channel_id:g('s-bye-ch')})}),
       fetch('/api/logs',         {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:true,channel_id:g('s-log-ch'),events:['member_join','member_leave','message_delete','moderation','role_update']})}),
-      fetch('/api/xp',           {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:gc('s-xp-enabled'),levelup_channel_id:g('s-xp-ch')})}),
+      fetch('/api/xp',           {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:gc('s-xp-enabled'),levelup_channel_id:g('s-xp-ch'), role_rewards: { "5": g('s-xp-r5'), "10": g('s-xp-r10'), "20": g('s-xp-r20') }})}),
       fetch('/api/moderation',   {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({anti_links:gc('s-mod-links'),anti_spam:gc('s-mod-spam')})}),
       fetch('/api/word_filter',  {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:gc('s-wf-enabled'),words})}),
       fetch('/api/socials',      {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:gc('s-soc-enabled'),channel_id:g('s-soc-ch'),kick:g('s-soc-kick'),tiktok:g('s-soc-tiktok'),youtube:g('s-soc-yt'),twitch:g('s-soc-twitch')})}),
