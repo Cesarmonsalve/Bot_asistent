@@ -1433,9 +1433,9 @@ init();
 app = Flask(__name__)
 app.secret_key = os.environ.get("PANEL_SECRET", "thefamily2024secret")
 
-BOT_TOKEN      = os.environ.get("BOT_TOKEN")
-GUILD_ID       = os.environ.get("GUILD_ID", "0")
-PANEL_PASSWORD = os.environ.get("PANEL_PASSWORD", "cesar2024")
+BOT_TOKEN      = (os.environ.get("BOT_TOKEN") or "").strip()
+GUILD_ID       = (os.environ.get("GUILD_ID") or "0").strip()
+PANEL_PASSWORD = (os.environ.get("PANEL_PASSWORD") or "cesar2024").strip()
 
 DISCORD = "https://discord.com/api/v10"
 HEADERS = lambda: {"Authorization": f"Bot {BOT_TOKEN}", "Content-Type": "application/json"}
@@ -1451,20 +1451,32 @@ def save_config(data):
 def discord_get(path):
     try:
         r = req_lib.get(f"{DISCORD}{path}", headers=HEADERS(), timeout=6)
+        if r.status_code != 200:
+            print(f"[DISCORD API ERROR] GET {path} returned {r.status_code}: {r.text}", flush=True)
         return r.json() if r.status_code == 200 else {}
-    except Exception: return {}
+    except Exception as e:
+        print(f"[DISCORD API EXCEPTION] GET {path}: {e}", flush=True)
+        return {}
 
 def discord_post(path, data):
     try:
         r = req_lib.post(f"{DISCORD}{path}", headers=HEADERS(), json=data, timeout=6)
-        return r.json()
-    except Exception: return {}
+        if r.status_code not in (200, 201, 204):
+            print(f"[DISCORD API ERROR] POST {path} returned {r.status_code}: {r.text}", flush=True)
+        return r.json() if hasattr(r, 'json') and r.text else {}
+    except Exception as e:
+        print(f"[DISCORD API EXCEPTION] POST {path}: {e}", flush=True)
+        return {}
 
 def discord_delete(path):
     try:
         r = req_lib.delete(f"{DISCORD}{path}", headers=HEADERS(), timeout=6)
+        if r.status_code not in (200, 204):
+            print(f"[DISCORD API ERROR] DELETE {path} returned {r.status_code}: {r.text}", flush=True)
         return r.status_code in (200, 204)
-    except Exception: return False
+    except Exception as e:
+        print(f"[DISCORD API EXCEPTION] DELETE {path}: {e}", flush=True)
+        return False
 
 def auth_required(f):
     from functools import wraps
