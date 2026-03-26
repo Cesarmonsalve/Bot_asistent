@@ -31,6 +31,12 @@ tree = bot.tree
 @bot.event
 async def on_ready():
     print(f"✅ {bot.user} online | Guild: {GUILD_ID}", flush=True)
+    # Registrar vistas persistentes
+    bot.add_view(TicketButton())
+    bot.add_view(CloseTicketView())
+    bot.add_view(StaffPanelView())
+    bot.add_view(OnboardingView())
+    
     try:
         synced = await tree.sync()
         print(f"🔄 Sincronizados {len(synced)} comandos slash", flush=True)
@@ -170,6 +176,15 @@ async def on_message(message):
                     ch = message.guild.get_channel(int(lv_ch)) if lv_ch else message.channel
                     if ch:
                         await ch.send(embed=discord.Embed(description=f"🎉 {message.author.mention} subió al **nivel {ud['level']}**!", color=0xf59e0b))
+                except Exception: pass
+                # Role Rewards
+                try:
+                    rewards = xp_cfg.get("role_rewards", {})
+                    str_lv = str(ud["level"])
+                    if str_lv in rewards and rewards[str_lv]:
+                        role_new = message.guild.get_role(int(rewards[str_lv]))
+                        if role_new:
+                            await message.author.add_roles(role_new, reason=f"Recompensa Nivel {str_lv}")
                 except Exception: pass
 
     # Custom commands
@@ -735,8 +750,25 @@ class CloseTicketView(discord.ui.View):
 
     @discord.ui.button(label="Cerrar Ticket 🔒", style=discord.ButtonStyle.danger, custom_id="ticket_close")
     async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("🔒 Cerrando ticket en 5 segundos...")
-        await asyncio.sleep(5)
+        await interaction.response.send_message("🔒 Generando transcripción y cerrando ticket en unos segundos...")
+        messages = [msg async for msg in interaction.channel.history(limit=100, oldest_first=True)]
+        transcript = f"Transcripción del Ticket: {interaction.channel.name}\n\n"
+        for m in messages:
+            transcript += f"[{m.created_at.strftime('%Y-%m-%d %H:%M:%S')}] {m.author.name}: {m.content}\n"
+            
+        cfg = load_config()
+        log_ch_id = cfg.get("logs", {}).get("channel_id")
+        if log_ch_id:
+            try:
+                log_ch = interaction.guild.get_channel(int(log_ch_id))
+                if log_ch:
+                    import io
+                    file = discord.File(io.BytesIO(transcript.encode("utf-8")), filename=f"transcript_{interaction.channel.name}.txt")
+                    embed = discord.Embed(title="🎫 Ticket Cerrado", description=f"`{interaction.channel.name}` cerrado por {interaction.user.mention}", color=0xef4444)
+                    await log_ch.send(embed=embed, file=file)
+            except Exception: pass
+            
+        await asyncio.sleep(2)
         await interaction.channel.delete()
 
 @tree.command(name="ticket-setup", description="Configurar panel de tickets [Admin]")
@@ -755,11 +787,11 @@ _stream_state = {}
 @tasks.loop(minutes=5)
 async def check_streams():
     cfg = load_config()
-    st = cfg.get("stream_alert", {})
-    if not st.get("enabled") or not st.get("channel_id"): return
+    soc = cfg.get("socials", {})
+    if not soc.get("enabled") or not soc.get("channel_id"): return
     guild = bot.get_guild(GUILD_ID)
     if not guild: return
-    ch = guild.get_channel(int(st["channel_id"]))
+    ch = guild.get_channel(int(soc["channel_id"]))
     if not ch: return
 
     async def check_kick(username):
@@ -774,15 +806,75 @@ async def check_streams():
         except Exception: pass
         return None
 
-    kick_user = st.get("kick_username", "")
-    live = await check_kick(kick_user)
-    key = f"kick_{kick_user}"
-    if live and not _stream_state.get(key):
-        _stream_state[key] = True
-        msg = st.get("message","🔴 {username} está en vivo! {url}").replace("{username}",kick_user).replace("{url}",live["url"]).replace("{title}",live["title"])
-        await ch.send(embed=discord.Embed(description=msg, color=0xef4444))
-    elif not live:
-        _stream_state[key] = False
+    async def check_twitch(username):
+        if not username: return None
+        try:
+            async with aiohttp.ClientSession() as s:
+                async with s.get(f"https://decapi.me/twitch/uptime/{username}", timeout=8) as r:
+                    text = (await r.text()).strip()
+                    if "Offline" not in text and "error" not in text.lower() and text:
+                        title_req = await s.get(f"https://decapi.me/twitch/title/{username}")
+                        title = await title_req.text() if title_req.status == 200 else "Live!"
+                        return {"title": title, "url": f"https://twitch.tv/{username}"}
+        except Exception: pass
+        return None
+
+    async def check_youtube(handle):
+        if not handle: return None
+        handle = handle.replace("@", "")
+        try:
+            async with aiohttp.ClientSession() as s:
+                url = f"https://www.youtube.com/@{handle}/live"
+                headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
+                async with s.get(url, headers=headers, timeout=8) as r:
+                    text = await r.text()
+                    if 'itemprop="isLiveBroadcast" content="True"' in text or '"isLive":true' in text or 'ytp-live' in text:
+                        title = "Live!"
+                        title_match = re.search(r'<title>(.*?)</title>', text)
+                        if title_match: title = title_match.group(1).replace(" - YouTube", "")
+                        return {"title": title, "url": url}
+        except Exception: pass
+        return None
+
+    async def check_tiktok(username):
+        if not username: return None
+        username = username.replace("@", "")
+        try:
+            async with aiohttp.ClientSession() as s:
+                url = f"https://www.tiktok.com/@{username}/live"
+                headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
+                async with s.get(url, headers=headers, timeout=8) as r:
+                    text = await r.text()
+                    if '"roomId":"' in text:
+                        match = re.search(r'"roomId":"(\d+)"', text)
+                        if match and match.group(1) and match.group(1) != "0":
+                            return {"title": f"¡En vivo en TikTok!", "url": url}
+        except Exception: pass
+        return None
+
+    platforms = {
+        "kick": (soc.get("kick", ""), check_kick, 0x53fc18, "🟩 Kick"),
+        "twitch": (soc.get("twitch", ""), check_twitch, 0x9146FF, "🟪 Twitch"),
+        "youtube": (soc.get("youtube", ""), check_youtube, 0xFF0000, "🟥 YouTube"),
+        "tiktok": (soc.get("tiktok", ""), check_tiktok, 0x000000, "📱 TikTok")
+    }
+
+    for plat, (user, func, color, plat_name) in platforms.items():
+        if not user: continue
+        live = await func(user)
+        key = f"{plat}_{user}"
+        
+        if live and not _stream_state.get(key):
+            _stream_state[key] = True
+            embed = discord.Embed(
+                title=f"🔴 ¡{user} está en vivo en {plat_name}!",
+                description=f"**{live['title']}**\n\n[🎮 Entra a ver el stream aquí]({live['url']})",
+                color=color
+            )
+            embed.set_author(name=user)
+            await ch.send(content="@everyone" if plat in ["twitch", "youtube"] else "", embed=embed)
+        elif not live:
+            _stream_state[key] = False
 
 @tree.command(name="staffpanel", description="Abre el panel interactivo de Staff [Staff]")
 @app_commands.checks.has_permissions(moderate_members=True)
@@ -1221,6 +1313,54 @@ async def on_error(interaction: discord.Interaction, error):
     else:
         await interaction.response.send_message(f"❌ Error: {error}", ephemeral=True)
 
+# ── LEVELS & XP COMMANDS ──────────────────────────────────────
+@tree.command(name="rank", description="🎖️ Ver tu nivel y experiencia o de otro usuario")
+async def rank(interaction: discord.Interaction, usuario: discord.Member = None):
+    usuario = usuario or interaction.user
+    cfg = load_config()
+    if not cfg.get("xp", {}).get("enabled"):
+        await interaction.response.send_message("❌ El sistema de niveles está desactivado.", ephemeral=True); return
+        
+    xp_data = cfg.get("xp_data", {})
+    uid = str(usuario.id)
+    ud = xp_data.get(uid, {"xp": 0, "level": 0})
+    
+    # Calcular progreso para siguiente nivel
+    current_xp = ud["xp"]
+    current_level = ud["level"]
+    next_level_xp = ((current_level + 1) ** 2) * 100
+    
+    embed = discord.Embed(title=f"🔰 Rango de {usuario.display_name}", color=0xf59e0b)
+    embed.set_thumbnail(url=usuario.display_avatar.url)
+    embed.add_field(name="Nivel", value=f"**{current_level}**", inline=True)
+    embed.add_field(name="XP Total", value=f"**{current_xp}** XP", inline=True)
+    embed.add_field(name="Siguiente Nivel", value=f"{current_xp} / {next_level_xp} XP", inline=False)
+    await interaction.response.send_message(embed=embed)
+
+@tree.command(name="leaderboard", description="🏆 Ver el top de usuarios con más nivel")
+async def leaderboard(interaction: discord.Interaction):
+    cfg = load_config()
+    if not cfg.get("xp", {}).get("enabled"):
+        await interaction.response.send_message("❌ El sistema de niveles está desactivado.", ephemeral=True); return
+        
+    xp_data = cfg.get("xp_data", {})
+    if not xp_data:
+        await interaction.response.send_message("❌ Aún no hay datos de XP.", ephemeral=True); return
+        
+    # Ordenar usuarios por XP
+    sorted_users = sorted(xp_data.items(), key=lambda x: x[1].get("xp", 0), reverse=True)[:10]
+    
+    embed = discord.Embed(title="🏆 Tabla de Clasificación", color=0xf59e0b)
+    desc = ""
+    for i, (uid, data) in enumerate(sorted_users, 1):
+        member = interaction.guild.get_member(int(uid))
+        name = member.display_name if member else f"Usuario Desconocido"
+        medals = {1: "🥇", 2: "🥈", 3: "🥉"}
+        rank_icon = medals.get(i, f"**{i}.**")
+        desc += f"{rank_icon} **{name}** — Nivel {data.get('level', 0)} ({data.get('xp', 0)} XP)\n"
+        
+    embed.description = desc or "No hay datos."
+    await interaction.response.send_message(embed=embed)
 
 # ── RUN ───────────────────────────────────────────────────────
 if TOKEN:

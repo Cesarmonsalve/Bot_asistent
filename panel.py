@@ -301,6 +301,10 @@ def api_goodbye(): return cfg_patch("goodbye",request.json)
 @auth_required
 def api_xp(): return cfg_patch("xp",request.json)
 
+@app.route("/api/tickets",methods=["POST"])
+@auth_required
+def api_tickets(): return cfg_patch("tickets",request.json)
+
 @app.route("/api/xp/reset",methods=["POST"])
 @auth_required
 def api_xp_reset():
@@ -622,9 +626,6 @@ Acciones: create_channel, delete_channel, modify_channel, create_poll, update_co
         return jsonify({"ok": False, "error": f"OMEGA-CORE Critical Error: {str(e)}"})
 
 # ── ONBOARDING CONFIG ─────────────────────────────────────
-@app.route("/api/onboarding", methods=["POST"])
-@auth_required
-def api_onboarding(): return cfg_patch("onboarding", request.json)
 
 @app.route("/api/onboarding/responses", methods=["GET"])
 @auth_required
