@@ -61,6 +61,28 @@ def discord_delete(path):
         print(f"[DISCORD API EXCEPTION] DELETE {path}: {e}", flush=True)
         return False
 
+def discord_patch(path, data):
+    try:
+        r = req_lib.patch(f"{DISCORD}{path}", headers=HEADERS(), json=data, timeout=6)
+        if r.status_code not in (200, 201, 204):
+            print(f"[DISCORD API ERROR] PATCH {path} → {r.status_code}: {r.text[:200]}", flush=True)
+        try: return r.json()
+        except: return {}
+    except Exception as e:
+        print(f"[DISCORD API EXCEPTION] PATCH {path}: {e}", flush=True)
+        return {}
+
+def discord_put(path, data):
+    try:
+        r = req_lib.put(f"{DISCORD}{path}", headers=HEADERS(), json=data, timeout=6)
+        if r.status_code not in (200, 201, 204):
+            print(f"[DISCORD API ERROR] PUT {path} → {r.status_code}: {r.text[:200]}", flush=True)
+        try: return r.json()
+        except: return {}
+    except Exception as e:
+        print(f"[DISCORD API EXCEPTION] PUT {path}: {e}", flush=True)
+        return {}
+
 def auth_required(f):
     from functools import wraps
     @wraps(f)
@@ -463,13 +485,61 @@ def api_autoconfig():
         "suggestions": suggestions
     })
 
+# ── REGLAS PREDEFINIDAS (sin costo de API) ───────────────────
+REGLAS_SERVIDOR = """**📜 REGLAMENTO DEL SERVIDOR**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**〔 1 〕 Respeto General**
+> No se toleran insultos, discriminación ni acoso de ningún tipo.
+> Trata a todos como quisieras ser tratado.
+
+**〔 2 〕 Spam & Flood**
+> Prohibido enviar mensajes repetidos, texto sin sentido o imágenes masivas.
+> Usa cada canal según su propósito indicado.
+
+**〔 3 〕 Contenido Apropiado**
+> Sin contenido NSFW, gore o material ilegal fuera de los canales habilitados.
+> No publicidad de otros servidores sin autorización del staff.
+
+**〔 4 〕 Nicknames & Avatares**
+> Tu nombre debe ser legible y mencionable.
+> Avatares ofensivos o inapropiados serán sancionados.
+
+**〔 5 〕 Canales de Voz**
+> No molestar, mover ni desconectar usuarios sin consentimiento.
+> Comportamiento adecuado en todo momento.
+
+**〔 6 〕 Moderación & Staff**
+> Las decisiones del staff son definitivas. No debatas sanciones en público.
+> Reportes y quejas en el canal habilitado o por ticket privado.
+
+**〔 7 〕 Cuentas & Bots**
+> Una cuenta por persona. Cuentas alternas para evasión = **ban permanente**.
+> Uso de bots no autorizados está prohibido.
+
+**〔 8 〕 Privacidad**
+> No compartas datos personales propios ni de terceros.
+> Cero capturas de pantalla de conversaciones privadas sin consentimiento.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚡ **Sanciones:** Advertencia → Mute → Kick → Ban
+📩 ¿Dudas o reportes? Abre un ticket o contacta al Staff."""
+
+REGLAS_TRIGGERS = ["reglas","normas","rules","reglamento","regla","normativa","crea las reglas","muestra las reglas","pon las reglas"]
+
 # ── AI CONSOLE ──────────────────────────────────────────────
 @app.route("/api/gemini/console", methods=["POST"])
 @auth_required
 def api_ai_console():
     prompt = request.json.get("prompt", "")
+    history = request.json.get("history", [])  # conversation memory from frontend
     if not prompt: return jsonify({"ok": False, "error": "No prompt provided"})
     if not groq_client: return jsonify({"ok": False, "error": "GROQ_API_KEY no configurada. Obtén una gratis en console.groq.com"})
+
+    # ── Atajos sin costo de API ───────────────────────────────
+    prompt_lower = prompt.lower().strip()
+    if any(t in prompt_lower for t in REGLAS_TRIGGERS):
+        return jsonify({"ok": True, "type": "reply", "msg": REGLAS_SERVIDOR})
 
     try:
         # 1. Fetch live context
@@ -494,13 +564,18 @@ Si la orden requiere interactuar con el servidor, añade al final un bloque JSON
 Acciones: create_channel, delete_channel, modify_channel, create_poll, update_config, manage_role, create_role, purge_messages, ban_user, kick_user, timeout_user, send_message.
 '''
         
-        # 2. Generate content
+        # 2. Generate content — with conversation memory
+        messages_payload = [{"role": "system", "content": sys_prompt}]
+        # Inject prior turns (last 8 exchanges max to stay within token limits)
+        for turn in history[-8:]:
+            if turn.get("role") in ("user", "assistant") and turn.get("content"):
+                messages_payload.append({"role": turn["role"], "content": str(turn["content"])[:800]})
+        # Make sure the current prompt is last
+        if not messages_payload or messages_payload[-1].get("content") != prompt:
+            messages_payload.append({"role": "user", "content": prompt})
         resp = groq_client.chat.completions.create(
             model=GROQ_MODEL,
-            messages=[
-                {"role": "system", "content": sys_prompt},
-                {"role": "user",   "content": prompt}
-            ],
+            messages=messages_payload,
             max_tokens=1024,
             temperature=0.7
         )
