@@ -1,5 +1,6 @@
 from flask import Flask, render_template_string, request, jsonify, redirect, session
-import json, os, requests as req_lib
+import json, os, re, requests as req_lib
+import google.generativeai as genai
 
 # ══════════════════════════════════════════════════════════════
 #  FLASK BACKEND
@@ -10,6 +11,10 @@ app.secret_key = os.environ.get("PANEL_SECRET", "thefamily2024secret")
 BOT_TOKEN      = (os.environ.get("BOT_TOKEN") or "").strip()
 GUILD_ID       = (os.environ.get("GUILD_ID") or "0").strip()
 PANEL_PASSWORD = (os.environ.get("PANEL_PASSWORD") or "cesar2024").strip()
+GEMINI_KEY     = (os.environ.get("GEMINI_API_KEY") or "").strip()
+
+if GEMINI_KEY:
+    genai.configure(api_key=GEMINI_KEY)
 
 DISCORD = "https://discord.com/api/v10"
 HEADERS = lambda: {"Authorization": f"Bot {BOT_TOKEN}", "Content-Type": "application/json"}
@@ -443,6 +448,65 @@ def api_autoconfig():
         },
         "suggestions": suggestions
     })
+
+# ── AI CONSOLE ──────────────────────────────────────────────
+@app.route("/api/gemini/console", methods=["POST"])
+@auth_required
+def api_ai_console():
+    prompt = request.json.get("prompt", "")
+    if not prompt: return jsonify({"ok": False, "error": "No prompt provided"})
+    if not GEMINI_KEY: return jsonify({"ok": False, "error": "GEMINI_API_KEY no configurada. Agrega la clave en Railway para usar la IA."})
+
+    try:
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        sys_prompt = '''Eres el núcleo IA de administración de un servidor de Discord.
+El usuario te dará una orden. Responde ÚNICAMENTE con un JSON válido.
+Acciones permitidas en el JSON:
+1. Crear canal: {"action": "create_channel", "name": "nombre", "type": 0 (texto) o 2 (voz) o 4 (categoría)}
+2. Enviar mensaje global: {"action": "send_message", "channel_id": "ide del canal o null para usar system channel", "content": "mensaje épico"}
+3. Crear rol: {"action": "create_role", "name": "nombre"}
+4. Respuestas informativas: {"action": "reply", "content": "soy la ia respondiendo a una pregunta o charla"}
+Si la peticion no es de administracion, responde con 'reply' de forma gamer e inteligente.'''
+        
+        resp = model.generate_content(f"{sys_prompt}\n\nOrden del usuario: {prompt}")
+        text = resp.text.strip().replace("```json","").replace("```","").strip()
+        data = json.loads(text)
+        
+        # Execute action on Discord
+        act = data.get("action")
+        
+        if act == "reply":
+            return jsonify({"ok": True, "type": "reply", "msg": data.get("content")})
+            
+        elif act == "create_channel":
+            payload = {"name": data.get("name"), "type": data.get("type", 0)}
+            r = discord_post(f"/guilds/{GUILD_ID}/channels", payload)
+            if "id" in r: return jsonify({"ok": True, "type": "success", "msg": f"Canal '{data.get('name')}' creado por IA."})
+            return jsonify({"ok": False, "error": "Discord API falló al crear el canal"})
+            
+        elif act == "create_role":
+            payload = {"name": data.get("name")}
+            r = discord_post(f"/guilds/{GUILD_ID}/roles", payload)
+            if "id" in r: return jsonify({"ok": True, "type": "success", "msg": f"Rol '{data.get('name')}' creado por IA."})
+            return jsonify({"ok": False, "error": "Discord API falló al crear el rol"})
+            
+        elif act == "send_message":
+            # Just grab the first text channel for simplicity if id not known
+            ch_list = discord_get(f"/guilds/{GUILD_ID}/channels")
+            cid = data.get("channel_id")
+            if not cid and type(ch_list) is list:
+                txt = [c for c in ch_list if c.get("type") == 0]
+                if txt: cid = txt[0]["id"]
+            
+            if cid:
+                discord_post(f"/channels/{cid}/messages", {"content": data.get("content")})
+                return jsonify({"ok": True, "type": "success", "msg": f"Mensaje emitido vía IA al canal."})
+            return jsonify({"ok": False, "error": "No hay canal donde enviar."})
+
+        return jsonify({"ok": True, "type": "reply", "msg": f"Entendido: {data}"})
+
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"IA Error: {str(e)}"})
 
 if __name__ == "__main__":
     port=int(os.environ.get("PORT",5000))

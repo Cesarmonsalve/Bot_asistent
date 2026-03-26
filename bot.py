@@ -3,9 +3,14 @@ from discord.ext import commands, tasks
 from discord import app_commands
 import json, os, asyncio, aiohttp, re, random
 from datetime import datetime, timedelta, timezone
+import google.generativeai as genai
 
 TOKEN    = (os.environ.get("BOT_TOKEN") or "").strip()
 GUILD_ID = int((os.environ.get("GUILD_ID") or "0").strip())
+GEMINI_KEY = (os.environ.get("GEMINI_API_KEY") or "").strip()
+
+if GEMINI_KEY:
+    genai.configure(api_key=GEMINI_KEY)
 
 # ── CONFIG ────────────────────────────────────────────────────
 def load_config():
@@ -45,18 +50,37 @@ async def on_member_join(member):
             role = member.guild.get_role(int(w["auto_role_id"]))
             if role: await member.add_roles(role)
         except Exception: pass
-    # Welcome message
+        
+    # Welcome message (AI Powered)
     if w.get("enabled") and w.get("channel_id"):
         try:
             ch = member.guild.get_channel(int(w["channel_id"]))
             if ch:
-                msg = (w.get("message") or "👋 Bienvenido/a {user}!").replace("{user}", member.mention).replace("{username}", str(member.name)).replace("{server}", member.guild.name).replace("{count}", str(member.guild.member_count))
-                embed = discord.Embed(description=msg, color=0x6366f1)
+                ai_msg = ""
+                if GEMINI_KEY:
+                    try:
+                        model = genai.GenerativeModel("gemini-1.5-flash")
+                        prompt = f"El usuario '{member.display_name}' acaba de unirse al servidor de Discord '{member.guild.name}'. El servidor tiene {member.guild.member_count} miembros. Escribe un mensaje de bienvenida corto (1 o 2 oraciones), gamer, épico, amigable y muy moderno para él. No uses emojis exagerados pero sé cálido. Usa tú (no usted)."
+                        resp = model.generate_content(prompt)
+                        ai_msg = resp.text.strip()
+                    except Exception as e:
+                        print(f"Gemini API error (fallback to default msg): {e}")
+                
+                # Fallback if AI fails or no key
+                if not ai_msg:
+                    ai_msg = f"👋 ¡Bienvenido/a a la nave, {member.mention}! Somos **{member.guild.name}**."
+
+                embed = discord.Embed(
+                    description=f"**{member.mention}** ha aterrizado.\n\n🤖 *Mensaje de IA:*\n> {ai_msg}",
+                    color=0xff4747
+                )
                 embed.set_author(name=member.display_name, icon_url=member.display_avatar.url)
                 if w.get("banner_url"): embed.set_image(url=w["banner_url"])
+                embed.set_footer(text="A.I. Autonomous Welcomes")
                 await ch.send(embed=embed)
         except Exception as e:
             print(f"Welcome error: {e}", flush=True)
+            
     await send_log(member.guild, "member_join", f"📥 **{member}** se unió al servidor.")
 
 @bot.event
