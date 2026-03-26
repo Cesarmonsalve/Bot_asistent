@@ -63,7 +63,10 @@ def auth_required(f):
     from functools import wraps
     @wraps(f)
     def decorated(*args, **kwargs):
-        if not session.get("logged_in"): return redirect("/login")
+        if not session.get("logged_in"):
+            if request.path.startswith("/api/"):
+                return jsonify({"ok": False, "error": "Sesión expirada. Por favor recarga la página e inicia sesión.", "expired": True}), 401
+            return redirect("/login")
         return f(*args, **kwargs)
     return decorated
 
@@ -315,6 +318,10 @@ def api_word_filter(): return cfg_patch("word_filter",request.json)
 @auth_required
 def api_stream(): return cfg_patch("stream_alert",request.json)
 
+@app.route("/api/socials",methods=["POST"])
+@auth_required
+def api_socials(): return cfg_patch("socials",request.json)
+
 @app.route("/api/logs",methods=["POST"])
 @auth_required
 def api_logs(): return cfg_patch("logs",request.json)
@@ -466,9 +473,11 @@ def api_ai_console():
         s_name  = g.get("name","The Family")
         # Fetch channels and roles for real context
         ch_list_raw = discord_get(f"/guilds/{GUILD_ID}/channels")
+        if not isinstance(ch_list_raw, list): ch_list_raw = []
         rol_list_raw = discord_get(f"/guilds/{GUILD_ID}/roles")
-        ch_ctx  = ", ".join(f"#{c['name']}({c['id']})" for c in (ch_list_raw or []) if c.get("type") == 0)[:600]
-        rol_ctx = ", ".join(f"{r['name']}({r['id']})" for r in (rol_list_raw or []) if r.get("name") != "@everyone")[:500]
+        if not isinstance(rol_list_raw, list): rol_list_raw = []
+        ch_ctx  = ", ".join(f"#{c.get('name')}({c.get('id')})" for c in ch_list_raw if c.get("type") == 0)[:600]
+        rol_ctx = ", ".join(f"{r.get('name')}({r.get('id')})" for r in rol_list_raw if r.get("name") != "@everyone")[:500]
         
         sys_prompt = f'''Eres "THE FAMILY OMEGA", el núcleo de IA Omnipotente del servidor "{s_name}".
 TIENES CONTROL TOTAL SOBRE {m_count} MIEMBROS Y TODA LA INFRAESTRUCTURA.
