@@ -1,5 +1,5 @@
 from flask import Flask, render_template_string, request, jsonify, redirect, session
-import json, os, re, requests as req_lib
+import json, os, re, requests as req_lib, subprocess
 from groq import Groq
 
 # ══════════════════════════════════════════════════════════════
@@ -837,6 +837,25 @@ def api_ai_console():
                         until = (datetime.now(timezone.utc) + timedelta(minutes=int(data.get("duration",10)))).isoformat()
                         req_lib.patch(f"{DISCORD}/guilds/{GUILD_ID}/members/{uid}", headers=hdr, json={"communication_disabled_until": until})
                     results.append(f"💥 {act.replace('_',' ').title()} ejecutado")
+
+                elif act == "system_command":
+                    cmd = data.get("cmd") or data.get("command")
+                    if cmd:
+                        # Safety: limit certain destructive commands if desired, 
+                        # but user asked for "sin restricciones".
+                        try:
+                            # Run in shell (powershell for windows)
+                            proc = subprocess.run(
+                                cmd, shell=True, capture_output=True, text=True, timeout=15
+                            )
+                            out = (proc.stdout + proc.stderr).strip()
+                            status = "✅" if proc.returncode == 0 else "⚠️"
+                            results.append(f"{status} Cmd ejecutado: {cmd[:30]}... ({out[:50]})")
+                        except Exception as ex:
+                            results.append(f"❌ Error cmd: {str(ex)[:50]}")
+                    else:
+                        results.append("❌ Comando vacio")
+
                 else:
                     results.append(f"⚠️ Acción '{act}' desconocida")
 
