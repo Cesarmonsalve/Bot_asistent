@@ -3,14 +3,15 @@ from discord.ext import commands, tasks
 from discord import app_commands
 import json, os, asyncio, aiohttp, re, random
 from datetime import datetime, timedelta, timezone
-import google.generativeai as genai
+from google import genai
 
 TOKEN    = (os.environ.get("BOT_TOKEN") or "").strip()
 GUILD_ID = int((os.environ.get("GUILD_ID") or "0").strip())
 GEMINI_KEY = (os.environ.get("GEMINI_API_KEY") or "").strip()
 
+gemini_client = None
 if GEMINI_KEY:
-    genai.configure(api_key=GEMINI_KEY)
+    gemini_client = genai.Client(api_key=GEMINI_KEY)
 
 # ── CONFIG ────────────────────────────────────────────────────
 def load_config():
@@ -57,11 +58,13 @@ async def on_member_join(member):
             ch = member.guild.get_channel(int(w["channel_id"]))
             if ch:
                 ai_msg = ""
-                if GEMINI_KEY:
+                if gemini_client:
                     try:
-                        model = genai.GenerativeModel("gemini-1.5-flash")
                         prompt = f"El usuario '{member.display_name}' acaba de unirse al servidor de Discord '{member.guild.name}'. El servidor tiene {member.guild.member_count} miembros. Escribe un mensaje de bienvenida corto (1 o 2 oraciones), gamer, épico, amigable y muy moderno para él. No uses emojis exagerados pero sé cálido. Usa tú (no usted)."
-                        resp = model.generate_content(prompt)
+                        resp = gemini_client.models.generate_content(
+                            model='gemini-2.5-flash',
+                            contents=prompt
+                        )
                         ai_msg = resp.text.strip()
                     except Exception as e:
                         print(f"Gemini API error (fallback to default msg): {e}")

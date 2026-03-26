@@ -1,6 +1,6 @@
 from flask import Flask, render_template_string, request, jsonify, redirect, session
 import json, os, re, requests as req_lib
-import google.generativeai as genai
+from google import genai
 
 # ══════════════════════════════════════════════════════════════
 #  FLASK BACKEND
@@ -13,8 +13,9 @@ GUILD_ID       = (os.environ.get("GUILD_ID") or "0").strip()
 PANEL_PASSWORD = (os.environ.get("PANEL_PASSWORD") or "cesar2024").strip()
 GEMINI_KEY     = (os.environ.get("GEMINI_API_KEY") or "").strip()
 
+gemini_client = None
 if GEMINI_KEY:
-    genai.configure(api_key=GEMINI_KEY)
+    gemini_client = genai.Client(api_key=GEMINI_KEY)
 
 DISCORD = "https://discord.com/api/v10"
 HEADERS = lambda: {"Authorization": f"Bot {BOT_TOKEN}", "Content-Type": "application/json"}
@@ -458,8 +459,7 @@ def api_ai_console():
     if not GEMINI_KEY: return jsonify({"ok": False, "error": "GEMINI_API_KEY no configurada. Agrega la clave en Railway para usar la IA."})
 
     try:
-        model = genai.GenerativeModel("gemini-1.5-flash")
-        sys_prompt = '''Eres el núcleo IA de administración de un servidor de Discord.
+        sys_prompt = '''Eres el núcleo IA de administración de un servidor de Discord...
 El usuario te dará una orden. Responde ÚNICAMENTE con un JSON válido.
 Acciones permitidas en el JSON:
 1. Crear canal: {"action": "create_channel", "name": "nombre", "type": 0 (texto) o 2 (voz) o 4 (categoría)}
@@ -468,7 +468,10 @@ Acciones permitidas en el JSON:
 4. Respuestas informativas: {"action": "reply", "content": "soy la ia respondiendo a una pregunta o charla"}
 Si la peticion no es de administracion, responde con 'reply' de forma gamer e inteligente.'''
         
-        resp = model.generate_content(f"{sys_prompt}\n\nOrden del usuario: {prompt}")
+        resp = gemini_client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=f"{sys_prompt}\n\nOrden del usuario: {prompt}"
+        )
         text = resp.text.strip().replace("```json","").replace("```","").strip()
         data = json.loads(text)
         
