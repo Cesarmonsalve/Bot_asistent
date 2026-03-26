@@ -330,10 +330,6 @@ def api_socials(): return cfg_patch("socials",request.json)
 @auth_required
 def api_logs(): return cfg_patch("logs",request.json)
 
-@app.route("/api/tickets",methods=["POST"])
-@auth_required
-def api_tickets(): return cfg_patch("tickets",request.json)
-
 @app.route("/api/onboarding",methods=["POST"])
 @auth_required
 def api_onboarding(): return cfg_patch("onboarding",request.json)
