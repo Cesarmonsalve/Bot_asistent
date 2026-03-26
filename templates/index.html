@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Family — Panel</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --black: #09090f; --deep: #0d0d1a; --card: #111120;
+  --purple: #5b3de8; --purple-l: #7c5ff0;
+  --blue: #2563eb; --blue-l: #60a5fa;
+  --text: #e8e8f0; --muted: #6b6b90;
+  --border: rgba(255,255,255,0.07);
+  --green: #22c55e; --yellow: #f59e0b; --red: #ef4444;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--black); color: var(--text); font-family: 'Syne', sans-serif; display: flex; min-height: 100vh; }
+
+/* SIDEBAR */
+.sidebar {
+  width: 220px; background: var(--deep); border-right: 1px solid var(--border);
+  padding: 28px 16px; display: flex; flex-direction: column; gap: 4px; flex-shrink: 0;
+  position: fixed; height: 100vh; overflow-y: auto;
+}
+.logo { font-size: 20px; font-weight: 800; margin-bottom: 24px; padding: 0 8px;
+  background: linear-gradient(90deg, var(--purple-l), var(--blue-l));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: 10px;
+  font-size: 13px; font-weight: 600; color: var(--muted);
+  cursor: pointer; transition: all .15s; border: none; background: none; width: 100%; text-align: left;
+}
+.nav-item:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+.nav-item.active { background: rgba(91,61,232,0.15); color: var(--purple-l); }
+.nav-sep { height: 1px; background: var(--border); margin: 10px 0; }
+.nav-logout { color: var(--red) !important; margin-top: auto; }
+
+/* MAIN */
+.main { margin-left: 220px; flex: 1; padding: 36px 40px; max-width: calc(100% - 220px); }
+.page { display: none; }
+.page.active { display: block; }
+
+h2 { font-size: 22px; font-weight: 800; margin-bottom: 6px; }
+.page-sub { color: var(--muted); font-size: 13px; margin-bottom: 28px; }
+
+/* CARDS */
+.card {
+  background: var(--deep); border: 1px solid var(--border);
+  border-radius: 16px; padding: 24px 28px; margin-bottom: 20px;
+}
+.card-title { font-size: 13px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 1px; color: var(--muted); margin-bottom: 20px; }
+
+/* STATS */
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+.stat { background: var(--deep); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; }
+.stat-label { font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.stat-val { font-size: 26px; font-weight: 800; }
+.stat-val.green { color: var(--green); }
+.stat-val.purple { color: var(--purple-l); }
+.stat-val.blue { color: var(--blue-l); }
+.stat-val.yellow { color: var(--yellow); }
+
+/* FORM */
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.form-row.full { grid-template-columns: 1fr; }
+.form-group { display: flex; flex-direction: column; gap: 6px; }
+label { font-size: 12px; font-weight: 600; color: var(--muted); }
+input[type=text], input[type=url], select, textarea {
+  background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+  border-radius: 10px; color: var(--text);
+  font-family: 'DM Mono', monospace; font-size: 13px;
+  padding: 10px 14px; outline: none; transition: border .2s; width: 100%;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--purple); }
+select option { background: var(--deep); }
+textarea { resize: vertical; min-height: 80px; }
+
+/* TOGGLE */
+.toggle-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+.toggle-label { font-size: 14px; font-weight: 600; }
+.toggle { position: relative; width: 48px; height: 26px; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.slider {
+  position: absolute; inset: 0; background: rgba(255,255,255,0.1);
+  border-radius: 26px; cursor: pointer; transition: .3s;
+}
+.slider:before {
+  content: ''; position: absolute; height: 18px; width: 18px;
+  left: 4px; bottom: 4px; background: white; border-radius: 50%; transition: .3s;
+}
+input:checked + .slider { background: var(--purple); }
+input:checked + .slider:before { transform: translateX(22px); }
+
+/* BUTTON */
+.btn {
+  background: linear-gradient(135deg, var(--purple), var(--blue));
+  border: none; border-radius: 10px; color: white;
+  font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700;
+  padding: 10px 24px; cursor: pointer; transition: opacity .2s;
+}
+.btn:hover { opacity: .85; }
+.btn-sm { padding: 7px 16px; font-size: 12px; }
+.btn-red { background: var(--red); }
+.btn-ghost {
+  background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+  color: var(--text);
+}
+
+/* TOAST */
+.toast {
+  position: fixed; bottom: 28px; right: 28px;
+  background: var(--green); color: #000;
+  font-weight: 700; font-size: 13px;
+  padding: 12px 20px; border-radius: 12px;
+  opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 999;
+}
+.toast.show { opacity: 1; }
+
+/* RR TABLE */
+.rr-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.rr-table th { text-align: left; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+.rr-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); font-family: 'DM Mono', monospace; }
+.rr-table tr:last-child td { border-bottom: none; }
+
+/* HELP */
+.help { background: rgba(91,61,232,0.08); border: 1px solid rgba(91,61,232,0.2); border-radius: 10px; padding: 12px 16px; font-size: 12px; color: var(--muted); margin-bottom: 16px; line-height: 1.6; }
+.help b { color: var(--purple-l); }
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="logo">⚡ The Family</div>
+
+  <button class="nav-item active" onclick="showPage('dashboard', this)">🏠 Dashboard</button>
+  <button class="nav-item" onclick="showPage('welcome', this)">👋 Bienvenida</button>
+  <button class="nav-item" onclick="showPage('reaction_roles', this)">🎭 Reaction Roles</button>
+  <button class="nav-item" onclick="showPage('xp', this)">⭐ Sistema XP</button>
+  <button class="nav-item" onclick="showPage('stream', this)">🔴 Stream Alerts</button>
+  <button class="nav-item" onclick="showPage('moderation', this)">🛡️ Moderación</button>
+
+  <div class="nav-sep"></div>
+  <a href="/logout" class="nav-item nav-logout">🚪 Salir</a>
+</div>
+
+<div class="main">
+
+  <!-- DASHBOARD -->
+  <div class="page active" id="page-dashboard">
+    <h2>Dashboard</h2>
+    <p class="page-sub">Resumen del servidor The Family</p>
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Estado</div><div class="stat-val green">Online</div></div>
+      <div class="stat"><div class="stat-label">Reaction Roles</div><div class="stat-val purple" id="stat-rr">—</div></div>
+      <div class="stat"><div class="stat-label">Sistema XP</div><div class="stat-val blue" id="stat-xp">—</div></div>
+      <div class="stat"><div class="stat-label">Bienvenida</div><div class="stat-val yellow" id="stat-welcome">—</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Comandos disponibles en Discord</div>
+      <table class="rr-table">
+        <tr><th>Comando</th><th>Descripción</th><th>Quién puede usarlo</th></tr>
+        <tr><td>/ping</td><td>Ver si el bot está vivo</td><td>Todos</td></tr>
+        <tr><td>/rank</td><td>Ver tu nivel y XP</td><td>Todos</td></tr>
+        <tr><td>/leaderboard</td><td>Top 10 del server</td><td>Todos</td></tr>
+        <tr><td>/sorteo</td><td>Iniciar un sorteo</td><td>Admin</td></tr>
+        <tr><td>/say</td><td>Hacer hablar al bot</td><td>Admin</td></tr>
+        <tr><td>/embed</td><td>Enviar embed personalizado</td><td>Admin</td></tr>
+        <tr><td>/warn</td><td>Advertir a un usuario</td><td>Staff</td></tr>
+        <tr><td>/clear</td><td>Borrar mensajes</td><td>Staff</td></tr>
+        <tr><td>/panel</td><td>Link a este panel</td><td>Admin</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- BIENVENIDA -->
+  <div class="page" id="page-welcome">
+    <h2>👋 Bienvenida</h2>
+    <p class="page-sub">Configura el mensaje que ve cada nuevo miembro</p>
+
+    <div class="card">
+      <div class="toggle-row">
+        <span class="toggle-label">Activar bienvenida automática</span>
+        <label class="toggle"><input type="checkbox" id="welcome-enabled"><span class="slider"></span></label>
+      </div>
+
+      <div class="help">
+        Variables disponibles: <b>{user}</b> menciona al usuario, <b>{username}</b> nombre, <b>{server}</b> nombre del server, <b>{count}</b> número de miembros.
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Canal de bienvenida</label>
+          <select id="welcome-channel">
+            <option value="">— Elegir canal —</option>
+            {% for ch in channels %}
+            <option value="{{ ch.id }}"># {{ ch.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Rol automático al entrar</label>
+          <select id="welcome-role">
+            <option value="">— Sin rol automático —</option>
+            {% for r in roles %}
+            <option value="{{ r.id }}">{{ r.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row full">
+        <div class="form-group">
+          <label>Mensaje de bienvenida</label>
+          <textarea id="welcome-message" placeholder="👋 Bienvenido/a {user} a **{server}**! Ya somos {count} en la familia."></textarea>
+        </div>
+      </div>
+
+      <div class="form-row full">
+        <div class="form-group">
+          <label>URL del banner (imagen de bienvenida)</label>
+          <input type="url" id="welcome-banner" placeholder="https://tu-imagen.com/banner.png">
+        </div>
+      </div>
+
+      <button class="btn" onclick="saveWelcome()">💾 Guardar</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Mensaje de despedida</div>
+      <div class="toggle-row">
+        <span class="toggle-label">Activar despedida automática</span>
+        <label class="toggle"><input type="checkbox" id="goodbye-enabled"><span class="slider"></span></label>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Canal de despedida</label>
+          <select id="goodbye-channel">
+            <option value="">— Elegir canal —</option>
+            {% for ch in channels %}
+            <option value="{{ ch.id }}"># {{ ch.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <button class="btn" onclick="saveGoodbye()">💾 Guardar</button>
+    </div>
+  </div>
+
+  <!-- REACTION ROLES -->
+  <div class="page" id="page-reaction_roles">
+    <h2>🎭 Reaction Roles</h2>
+    <p class="page-sub">Asigná roles automáticamente cuando alguien reacciona a un mensaje</p>
+
+    <div class="card">
+      <div class="card-title">Agregar nuevo reaction role</div>
+      <div class="help">
+        1. Enviá el mensaje de roles en Discord con <b>/embed</b> o <b>/say</b><br>
+        2. Click derecho al mensaje → <b>Copiar ID</b> (necesitás modo desarrollador activado)<br>
+        3. Pegá el ID acá y configurá el emoji y el rol
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>ID del mensaje</label>
+          <input type="text" id="rr-msg-id" placeholder="1234567890123456789">
+        </div>
+        <div class="form-group">
+          <label>Emoji</label>
+          <input type="text" id="rr-emoji" placeholder="🎮 o :nombre_emoji:">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Rol a asignar</label>
+          <select id="rr-role">
+            <option value="">— Elegir rol —</option>
+            {% for r in roles %}
+            <option value="{{ r.id }}">{{ r.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <button class="btn" onclick="addRR()">➕ Agregar</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Reaction roles activos</div>
+      <table class="rr-table">
+        <tr><th>Mensaje ID</th><th>Emoji</th><th>Rol ID</th><th></th></tr>
+      </table>
+      <div id="rr-empty" style="color:var(--muted);font-size:13px;padding:12px 0;">No hay reaction roles configurados.</div>
+    </div>
+  </div>
+
+  <!-- XP -->
+  <div class="page" id="page-xp">
+    <h2>⭐ Sistema de XP</h2>
+    <p class="page-sub">Los usuarios ganan 10 XP por mensaje. Al subir de nivel se anuncia automáticamente.</p>
+
+    <div class="card">
+      <div class="toggle-row">
+        <span class="toggle-label">Activar sistema de XP y niveles</span>
+        <label class="toggle"><input type="checkbox" id="xp-enabled"><span class="slider"></span></label>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Canal para anunciar subidas de nivel</label>
+          <select id="xp-channel">
+            <option value="">— Mismo canal donde escribieron —</option>
+            {% for ch in channels %}
+            <option value="{{ ch.id }}"># {{ ch.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <button class="btn" onclick="saveXP()">💾 Guardar</button>
+    </div>
+  </div>
+
+  <!-- STREAM -->
+  <div class="page" id="page-stream">
+    <h2>🔴 Stream Alerts</h2>
+    <p class="page-sub">El bot avisa automáticamente cuando estás en vivo</p>
+
+    <div class="card">
+      <div class="toggle-row">
+        <span class="toggle-label">Activar alertas de stream</span>
+        <label class="toggle"><input type="checkbox" id="stream-enabled"><span class="slider"></span></label>
+      </div>
+      <div class="help">
+        Variables: <b>{username}</b> tu usuario, <b>{url}</b> link al stream, <b>{title}</b> título del stream.
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Canal de alertas</label>
+          <select id="stream-channel">
+            <option value="">— Elegir canal —</option>
+            {% for ch in channels %}
+            <option value="{{ ch.id }}"># {{ ch.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Usuario de Kick</label>
+          <input type="text" id="stream-kick" placeholder="cesarmonsalve">
+        </div>
+        <div class="form-group">
+          <label>Usuario de TikTok</label>
+          <input type="text" id="stream-tiktok" placeholder="@cesarmonsalve">
+        </div>
+      </div>
+      <div class="form-row full">
+        <div class="form-group">
+          <label>Mensaje de alerta</label>
+          <textarea id="stream-message" placeholder="🔴 {username} está en vivo! Entrá acá → {url}"></textarea>
+        </div>
+      </div>
+      <button class="btn" onclick="saveStream()">💾 Guardar</button>
+    </div>
+  </div>
+
+  <!-- MODERACIÓN -->
+  <div class="page" id="page-moderation">
+    <h2>🛡️ Moderación</h2>
+    <p class="page-sub">Protección automática del servidor</p>
+
+    <div class="card">
+      <div class="toggle-row">
+        <span class="toggle-label">Anti-links (borra links de usuarios sin permisos)</span>
+        <label class="toggle"><input type="checkbox" id="mod-antilinks"><span class="slider"></span></label>
+      </div>
+      <button class="btn" onclick="saveMod()">💾 Guardar</button>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast">✅ Guardado</div>
+
+<script>
+const cfg = {{ cfg | tojson }};
+
+function showPage(name, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  btn.classList.add('active');
+  if (name === 'reaction_roles') loadRR();
+}
+
+function toast(msg = '✅ Guardado') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+function post(url, data) {
+  return fetch(url, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
+}
+
+// ─── LOAD CONFIG ────────────────────────────────────────────
+window.onload = () => {
+  // Welcome
+  if (cfg.welcome) {
+    document.getElementById('welcome-enabled').checked = cfg.welcome.enabled;
+    document.getElementById('welcome-channel').value = cfg.welcome.channel_id || '';
+    document.getElementById('welcome-role').value = cfg.welcome.auto_role_id || '';
+    document.getElementById('welcome-message').value = cfg.welcome.message || '';
+    document.getElementById('welcome-banner').value = cfg.welcome.banner_url || '';
+  }
+  if (cfg.goodbye) {
+    document.getElementById('goodbye-enabled').checked = cfg.goodbye.enabled;
+    document.getElementById('goodbye-channel').value = cfg.goodbye.channel_id || '';
+  }
+  if (cfg.xp) {
+    document.getElementById('xp-enabled').checked = cfg.xp.enabled;
+    document.getElementById('xp-channel').value = cfg.xp.levelup_channel_id || '';
+  }
+  if (cfg.stream_alert) {
+    document.getElementById('stream-enabled').checked = cfg.stream_alert.enabled;
+    document.getElementById('stream-channel').value = cfg.stream_alert.channel_id || '';
+    document.getElementById('stream-kick').value = cfg.stream_alert.kick_username || '';
+    document.getElementById('stream-tiktok').value = cfg.stream_alert.tiktok_username || '';
+    document.getElementById('stream-message').value = cfg.stream_alert.message || '';
+  }
+  if (cfg.moderation) {
+    document.getElementById('mod-antilinks').checked = cfg.moderation.anti_links;
+  }
+
+  // Dashboard stats
+  document.getElementById('stat-rr').textContent = (cfg.reaction_roles || []).length;
+  document.getElementById('stat-xp').textContent = cfg.xp?.enabled ? 'ON' : 'OFF';
+  document.getElementById('stat-welcome').textContent = cfg.welcome?.enabled ? 'ON' : 'OFF';
+};
+
+// ─── SAVE FUNCTIONS ─────────────────────────────────────────
+async function saveWelcome() {
+  await post('/api/welcome', {
+    enabled: document.getElementById('welcome-enabled').checked,
+    channel_id: document.getElementById('welcome-channel').value,
+    auto_role_id: document.getElementById('welcome-role').value,
+    message: document.getElementById('welcome-message').value,
+    banner_url: document.getElementById('welcome-banner').value,
+  });
+  toast();
+}
+
+async function saveGoodbye() {
+  await post('/api/goodbye', {
+    enabled: document.getElementById('goodbye-enabled').checked,
+    channel_id: document.getElementById('goodbye-channel').value,
+  });
+  toast();
+}
+
+async function saveXP() {
+  await post('/api/xp', {
+    enabled: document.getElementById('xp-enabled').checked,
+    levelup_channel_id: document.getElementById('xp-channel').value,
+  });
+  toast();
+}
+
+async function saveStream() {
+  await post('/api/stream_alert', {
+    enabled: document.getElementById('stream-enabled').checked,
+    channel_id: document.getElementById('stream-channel').value,
+    kick_username: document.getElementById('stream-kick').value,
+    tiktok_username: document.getElementById('stream-tiktok').value,
+    message: document.getElementById('stream-message').value,
+  });
+  toast();
+}
+
+async function saveMod() {
+  await post('/api/moderation', {
+    anti_links: document.getElementById('mod-antilinks').checked,
+  });
+  toast();
+}
+
+// ─── REACTION ROLES ─────────────────────────────────────────
+async function loadRR() {
+  const res = await fetch('/api/reaction_roles');
+  const rrs = await res.json();
+  const tbody = document.querySelector('.rr-table');
+  const empty = document.getElementById('rr-empty');
+  const rows = Array.from(tbody.querySelectorAll('tr')).slice(1);
+  rows.forEach(r => r.remove());
+  if (rrs.length === 0) { empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  rrs.forEach((rr, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${rr.message_id}</td><td>${rr.emoji}</td><td>${rr.role_id}</td>
+      <td><button class="btn btn-sm btn-red" onclick="deleteRR(${i})">Eliminar</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+async function addRR() {
+  const msg_id = document.getElementById('rr-msg-id').value.trim();
+  const emoji  = document.getElementById('rr-emoji').value.trim();
+  const role   = document.getElementById('rr-role').value;
+  if (!msg_id || !emoji || !role) { alert('Completá todos los campos'); return; }
+  await post('/api/reaction_roles', { message_id: msg_id, emoji, role_id: role });
+  document.getElementById('rr-msg-id').value = '';
+  document.getElementById('rr-emoji').value = '';
+  document.getElementById('rr-role').value = '';
+  loadRR(); toast('✅ Reaction role agregado');
+}
+
+async function deleteRR(i) {
+  await fetch(`/api/reaction_roles/${i}`, { method: 'DELETE' });
+  loadRR(); toast('🗑️ Eliminado');
+}
+</script>
+</body>
+</html>
