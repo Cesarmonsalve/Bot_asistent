@@ -1,12 +1,7 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 import json, os, requests as req_lib
 
-_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-app = Flask(
-    __name__,
-    template_folder=os.path.join(_BASE_DIR, "templates"),
-    static_folder=os.path.join(_BASE_DIR, "static"),
-)
+app = Flask(__name__)
 app.secret_key = os.environ.get("PANEL_SECRET", "thefamily2024secret")
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
