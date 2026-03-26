@@ -1146,15 +1146,34 @@ Infiere la mejor opción. Ejecuta directamente sin pedir confirmación."""
                 return f"🤖 {clean_reply}" if clean_reply else f"🤖 {data.get('content', '...')}"
 
             elif act == "create_channel":
-                ctype = data.get("type", 0)
-                name  = data.get("name")
-                if not name:
-                    success = False; exec_msg = "❌ Falta el nombre del canal."
+    ctype = data.get("type", 0)
+    name  = data.get("name")
+    # Validación mejorada del nombre
+    if not name or not isinstance(name, str) or len(name.strip()) == 0:
+        success = False
+        exec_msg = "❌ El nombre del canal no puede estar vacío."
+    else:
+        name = name.strip()                     # quita espacios al inicio/final
+        if len(name) > 100:
+            name = name[:100]                   # corta a 100 caracteres máximo
+        # Reemplaza caracteres no permitidos por guiones o los quita
+        import re
+        name = re.sub(r'[^a-zA-Z0-9\-_ ]', '', name)  # deja solo letras, números, guiones, espacios
+        if len(name) == 0:
+            success = False
+            exec_msg = "❌ El nombre del canal no contiene caracteres válidos."
+        else:
+            try:
+                if ctype == 0:
+                    new_ch = await guild.create_text_channel(name)
+                elif ctype == 2:
+                    new_ch = await guild.create_voice_channel(name)
                 else:
-                    if ctype == 0:   new_ch = await guild.create_text_channel(name)
-                    elif ctype == 2: new_ch = await guild.create_voice_channel(name)
-                    else:            new_ch = await guild.create_category(name)
-                    exec_msg = f"✅ {new_ch.name} creado (ID: {new_ch.id})"
+                    new_ch = await guild.create_category(name)
+                exec_msg = f"✅ {new_ch.name} creado (ID: {new_ch.id})"
+            except Exception as e:
+                success = False
+                exec_msg = f"❌ Error al crear canal: {e}"
 
             elif act == "delete_channel":
                 ch_id = data.get("channel_id")
