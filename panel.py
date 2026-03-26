@@ -321,6 +321,129 @@ def api_tickets(): return cfg_patch("tickets",request.json)
 @auth_required
 def api_config(): return jsonify(load_config())
 
+# ── SMART AUTO-CONFIG ─────────────────────────────────────────
+@app.route("/api/autoconfig", methods=["POST"])
+@auth_required
+def api_autoconfig():
+    """Analyze the Discord server and auto-fill config.json intelligently."""
+    channels = discord_get(f"/guilds/{GUILD_ID}/channels")
+    roles    = discord_get(f"/guilds/{GUILD_ID}/roles")
+    members  = discord_get(f"/guilds/{GUILD_ID}/members?limit=200")
+    if not isinstance(channels, list): return jsonify({"ok":False,"error":"No se pudo obtener canales. Verifica el token."})
+    if not isinstance(roles,    list): roles = []
+
+    text_ch = [c for c in channels if c.get("type") in (0,5)]
+    cats    = [c for c in channels if c.get("type") == 4]
+
+    def find_ch(*keywords):
+        for kw in keywords:
+            for c in text_ch:
+                if kw in c["name"].lower(): return c["id"]
+        return None
+
+    def find_cat(*keywords):
+        for kw in keywords:
+            for c in cats:
+                if kw in c["name"].lower(): return c["id"]
+        return None
+
+    def find_role(*keywords):
+        for kw in keywords:
+            for r in roles:
+                if kw in r["name"].lower() and r["name"] != "@everyone": return r["id"]
+        return None
+
+    # ── Channel Detection ─────────────────────────────────────
+    welcome_ch   = find_ch("bienvenid","welcome","llegada","entrada","newmember","nuevo")
+    goodbye_ch   = find_ch("despedid","salida","leave","adios","bye","bienvenid","welcome")
+    log_ch       = find_ch("log","audit","registro","mod-log","modlog","staff-log")
+    stream_ch    = find_ch("stream","alerta","live","directo","notif","kick","stream-alert")
+    announce_ch  = find_ch("anunci","announce","anuncio","noticias","news","info")
+    ticket_cat   = find_cat("ticket","soporte","support","ayuda","help")
+
+    # ── Role Detection ────────────────────────────────────────
+    member_role  = find_role("miembro","member","verificado","verified","folk","familia","integrante")
+    staff_role   = find_role("staff","moderador","mod","admin","soporte","support")
+    vip_role     = find_role("vip","premium","pro","donator","supporter")
+
+    # ── Bot member count ──────────────────────────────────────
+    bot_count    = sum(1 for m in (members if isinstance(members,list) else []) if m.get("user",{}).get("bot"))
+    human_count  = len(members) - bot_count if isinstance(members,list) else 0
+
+    # ── Build suggested config ────────────────────────────────
+    cfg = load_config()
+
+    suggestions = {}
+
+    # Welcome
+    if welcome_ch:
+        cfg["welcome"]["enabled"]    = True
+        cfg["welcome"]["channel_id"] = welcome_ch
+        if member_role: cfg["welcome"]["auto_role_id"] = member_role
+        suggestions["welcome"] = f"Canal detectado: ID {welcome_ch}"
+
+    # Goodbye
+    if goodbye_ch:
+        cfg["goodbye"]["enabled"]    = True
+        cfg["goodbye"]["channel_id"] = goodbye_ch
+        suggestions["goodbye"] = f"Canal detectado: ID {goodbye_ch}"
+
+    # Logs
+    if log_ch:
+        cfg["logs"]["enabled"]    = True
+        cfg["logs"]["channel_id"] = log_ch
+        cfg["logs"]["events"]     = ["member_join","member_leave","message_delete","moderation","role_update"]
+        suggestions["logs"] = f"Canal detectado: ID {log_ch}"
+
+    # Stream Alerts
+    if stream_ch:
+        cfg["stream_alert"]["enabled"]    = True
+        cfg["stream_alert"]["channel_id"] = stream_ch
+        suggestions["stream_alert"] = f"Canal detectado: ID {stream_ch}"
+
+    # Tickets
+    if ticket_cat:
+        cfg["tickets"]["enabled"]     = True
+        cfg["tickets"]["category_id"] = ticket_cat
+        if staff_role: cfg["tickets"]["support_role_id"] = staff_role
+        suggestions["tickets"] = f"Categoría detectada: ID {ticket_cat}"
+
+    # Moderation — enable by default
+    cfg["moderation"]["anti_links"] = True
+    cfg["moderation"]["anti_spam"]  = True
+    suggestions["moderation"] = "Anti-links y anti-spam activados"
+
+    # XP
+    cfg["xp"]["enabled"] = True
+    if announce_ch: cfg["xp"]["levelup_channel_id"] = announce_ch
+    suggestions["xp"] = "XP activado automáticamente"
+
+    save_config(cfg)
+
+    # ── Return detailed analysis ──────────────────────────────
+    return jsonify({
+        "ok": True,
+        "analysis": {
+            "channels_total":  len(channels),
+            "text_channels":   len(text_ch),
+            "categories":      len(cats),
+            "roles_total":     len(roles),
+            "members_humans":  human_count,
+            "members_bots":    bot_count,
+            "detected": {
+                "welcome_channel":  welcome_ch,
+                "goodbye_channel":  goodbye_ch,
+                "log_channel":      log_ch,
+                "stream_channel":   stream_ch,
+                "ticket_category":  ticket_cat,
+                "member_role":      member_role,
+                "staff_role":       staff_role,
+                "vip_role":         vip_role,
+            }
+        },
+        "suggestions": suggestions
+    })
+
 if __name__ == "__main__":
     port=int(os.environ.get("PORT",5000))
     app.run(host="0.0.0.0",port=port)

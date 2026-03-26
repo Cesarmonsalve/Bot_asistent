@@ -136,13 +136,198 @@ async def on_message_delete(message):
     if message.author.bot: return
     await send_log(message.guild, "message_delete", f"🗑️ Mensaje de **{message.author}** en {message.channel.mention}:\n> {message.content[:300]}")
 
-@bot.event
+STAFF_KEYWORDS = ["staff","moderador","mod","admin","soporte","support","helper","helper","ayudante","guardian","guardia"]
+
+def is_staff_role(role_name: str) -> bool:
+    name = role_name.lower()
+    return any(kw in name for kw in STAFF_KEYWORDS)
+
 async def on_member_update(before, after):
-    if before.roles != after.roles:
-        added   = [r for r in after.roles if r not in before.roles]
-        removed = [r for r in before.roles if r not in after.roles]
-        if added:   await send_log(before.guild, "role_update", f"🏷️ **{after}** recibió {added[0].mention}")
-        if removed: await send_log(before.guild, "role_update", f"🏷️ **{after}** perdió {removed[0].mention}")
+    if before.roles == after.roles: return
+    added   = [r for r in after.roles if r not in before.roles]
+    removed = [r for r in before.roles if r not in after.roles]
+
+    # ── Log role changes ──────────────────────────────────────
+    if added:   await send_log(before.guild, "role_update", f"🏷️ **{after}** recibió {added[0].mention}")
+    if removed: await send_log(before.guild, "role_update", f"🏷️ **{after}** perdió {removed[0].mention}")
+
+    # ── Detect staff role assignment ──────────────────────────
+    new_staff_roles = [r for r in added if is_staff_role(r.name)]
+    if not new_staff_roles: return
+
+    # DM the new staff member
+    role_name = new_staff_roles[0].name
+    embed = discord.Embed(
+        title=f"🛡️ ¡Bienvenido al Staff de {after.guild.name}!",
+        description=(
+            f"Hola **{after.display_name}**, se te ha asignado el rol **{role_name}**.\n"
+            "Ahora tienes acceso a comandos y herramientas de moderación."
+        ),
+        color=0x6366f1
+    )
+    embed.add_field(
+        name="⚡ Tus Comandos",
+        value=(
+            "`/warn @usuario razón` — Advertir\n"
+            "`/warns @usuario` — Ver advertencias\n"
+            "`/clear cantidad` — Borrar mensajes\n"
+            "`/kick @usuario razón` — Expulsar\n"
+            "`/timeout @usuario min` — Silenciar\n"
+            "`/staffpanel` — Panel de Staff con botones\n"
+            "`/userinfo @usuario` — Info del usuario"
+        ),
+        inline=False
+    )
+    embed.add_field(
+        name="📋 Reglas de Staff",
+        value=(
+            "• Usa los comandos con responsabilidad\n"
+            "• Siempre indica una razón válida\n"
+            "• Consulta al Admin antes de banear\n"
+            "• Reporta cualquier abuso de usuario"
+        ),
+        inline=False
+    )
+    embed.set_footer(text=f"The Family • Rol: {role_name}")
+    try:
+        await after.send(embed=embed)
+    except discord.Forbidden:
+        pass  # DMs blocked
+
+    # Also notify in the first visible staff channel
+    try:
+        staff_ch = None
+        for ch in after.guild.text_channels:
+            if any(kw in ch.name.lower() for kw in ["staff","mod","admin","soporte"]):
+                perms = ch.permissions_for(after.guild.me)
+                if perms.send_messages:
+                    staff_ch = ch
+                    break
+        if staff_ch:
+            notif = discord.Embed(
+                description=f"👮 {after.mention} ahora es **{role_name}**. ¡Bienvenido al equipo!",
+                color=0x22c55e
+            )
+            await staff_ch.send(embed=notif)
+    except Exception:
+        pass
+
+# ═══════════════════════════════════════════════════════════════
+#  STAFF PANEL — DISCORD UI WITH BUTTONS
+# ═══════════════════════════════════════════════════════════════
+
+class MemberSelectModal(discord.ui.Modal):
+    def __init__(self, action: str):
+        super().__init__(title=f"{'⚠️ Warn' if action=='warn' else '👢 Kick' if action=='kick' else '🔨 Ban' if action=='ban' else '🔇 Timeout' if action=='timeout' else '🗑️ Clear'}")
+        self.action = action
+        if action == "clear":
+            self.cantidad = discord.ui.TextInput(label="Cantidad de mensajes (1-100)", placeholder="10", max_length=3)
+            self.add_item(self.cantidad)
+        else:
+            self.target = discord.ui.TextInput(label="ID o @usuario", placeholder="123456789 o nombre del usuario", max_length=50)
+            self.razon  = discord.ui.TextInput(label="Razón", placeholder="Comportamiento inadecuado...", required=False, max_length=200)
+            self.add_item(self.target); self.add_item(self.razon)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        # Check staff permissions
+        if not (interaction.user.guild_permissions.moderate_members or interaction.user.guild_permissions.administrator):
+            await interaction.response.send_message("❌ No tienes permisos de staff.", ephemeral=True); return
+
+        if self.action == "clear":
+            try:
+                n = min(max(int(self.cantidad.value), 1), 100)
+                deleted = await interaction.channel.purge(limit=n)
+                await interaction.response.send_message(f"🗑️ {len(deleted)} mensajes eliminados.", ephemeral=True)
+            except Exception as e:
+                await interaction.response.send_message(f"❌ Error: {e}", ephemeral=True)
+            return
+
+        razon = self.razon.value if self.razon.value else "Sin razón"
+        target_str = self.target.value.strip().replace("<@","").replace(">","").replace("!","")
+        guild = interaction.guild
+        member = None
+        try:
+            member = guild.get_member(int(target_str))
+            if not member:
+                member = discord.utils.find(lambda m: m.name.lower()==target_str.lower() or m.display_name.lower()==target_str.lower(), guild.members)
+        except (ValueError, TypeError):
+            member = discord.utils.find(lambda m: m.name.lower()==target_str.lower() or m.display_name.lower()==target_str.lower(), guild.members)
+
+        if not member:
+            await interaction.response.send_message(f"❌ No encontré al usuario `{target_str}`.", ephemeral=True); return
+
+        try:
+            if self.action == "warn":
+                cfg = load_config(); w = cfg.get("warns", {}); uid = str(member.id)
+                w[uid] = w.get(uid, [])
+                w[uid].append({"razon": razon, "fecha": str(datetime.now()), "by": str(interaction.user)})
+                cfg["warns"] = w; save_config(cfg)
+                result = f"⚠️ **{member}** advertido. Total warns: {len(w[uid])}"
+                color = 0xf59e0b
+            elif self.action == "kick":
+                await member.kick(reason=razon); result = f"👢 **{member}** expulsado."; color = 0xef4444
+            elif self.action == "ban":
+                await member.ban(reason=razon); result = f"🔨 **{member}** baneado."; color = 0xef4444
+            elif self.action == "timeout":
+                until = discord.utils.utcnow() + timedelta(minutes=10)
+                await member.timeout(until, reason=razon); result = f"🔇 **{member}** silenciado 10 min."; color = 0xf59e0b
+
+            embed = discord.Embed(description=f"{result}\nRazón: *{razon}*\nPor: {interaction.user.mention}", color=color)
+            await interaction.response.send_message(embed=embed)
+            await send_log(guild, "moderation", f"{result} | Razón: {razon} | Por: {interaction.user}")
+        except discord.Forbidden:
+            await interaction.response.send_message("❌ No tengo permisos para hacer esa acción.", ephemeral=True)
+        except Exception as e:
+            await interaction.response.send_message(f"❌ Error: {e}", ephemeral=True)
+
+class StaffPanelView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="⚠️ Warn", style=discord.ButtonStyle.secondary, custom_id="sp_warn", row=0)
+    async def warn_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(MemberSelectModal("warn"))
+
+    @discord.ui.button(label="👢 Kick", style=discord.ButtonStyle.danger, custom_id="sp_kick", row=0)
+    async def kick_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(MemberSelectModal("kick"))
+
+    @discord.ui.button(label="🔨 Ban", style=discord.ButtonStyle.danger, custom_id="sp_ban", row=0)
+    async def ban_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(MemberSelectModal("ban"))
+
+    @discord.ui.button(label="🔇 Timeout", style=discord.ButtonStyle.secondary, custom_id="sp_timeout", row=1)
+    async def timeout_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(MemberSelectModal("timeout"))
+
+    @discord.ui.button(label="🗑️ Limpiar Chat", style=discord.ButtonStyle.secondary, custom_id="sp_clear", row=1)
+    async def clear_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(MemberSelectModal("clear"))
+
+    @discord.ui.button(label="📋 Warns de Usuario", style=discord.ButtonStyle.primary, custom_id="sp_warns", row=1)
+    async def warns_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        class WarnsModal(discord.ui.Modal, title="📋 Ver Warns"):
+            target = discord.ui.TextInput(label="ID o nombre del usuario", max_length=50)
+            async def on_submit(self_, i2: discord.Interaction):
+                t = self_.target.value.strip().replace("<@","").replace(">","").replace("!","")
+                guild = i2.guild
+                member = None
+                try:   member = guild.get_member(int(t))
+                except: pass
+                if not member:
+                    member = discord.utils.find(lambda m: m.name.lower()==t.lower() or m.display_name.lower()==t.lower(), guild.members)
+                if not member:
+                    await i2.response.send_message(f"❌ No encontré `{t}`.", ephemeral=True); return
+                warns = load_config().get("warns",{}).get(str(member.id),[])
+                if not warns:
+                    await i2.response.send_message(f"✅ {member.mention} no tiene warns.", ephemeral=True); return
+                embed = discord.Embed(title=f"⚠️ Warns de {member}", color=0xf59e0b)
+                for i3, w in enumerate(warns, 1):
+                    embed.add_field(name=f"#{i3}", value=f"Razón: {w['razon']}\nPor: {w['by']}", inline=True)
+                await i2.response.send_message(embed=embed, ephemeral=True)
+        await interaction.response.send_modal(WarnsModal())
+
+
 
 @bot.event
 async def on_raw_reaction_add(payload):
@@ -448,10 +633,123 @@ async def check_streams():
     elif not live:
         _stream_state[key] = False
 
+@tree.command(name="staffpanel", description="Abre el panel interactivo de Staff [Staff]")
+@app_commands.checks.has_permissions(moderate_members=True)
+async def staffpanel(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="🛡️ Panel de Control — Staff",
+        description="Selecciona una acción para administrar el servidor. Se abrirá una ventana para ingresar los datos del usuario.",
+        color=0x6366f1
+    )
+    embed.set_footer(text=f"Solicitado por {interaction.user.display_name}")
+    await interaction.response.send_message(embed=embed, view=StaffPanelView(), ephemeral=True)
+
+@tree.command(name="staffpanel-setup", description="Envía el panel de Staff a un canal fijo [Admin]")
+@app_commands.checks.has_permissions(administrator=True)
+async def staffpanel_setup(interaction: discord.Interaction, canal: discord.TextChannel):
+    embed = discord.Embed(
+        title="🛡️ Panel de Control — Staff",
+        description="Selecciona una acción usar las herramientas de moderación.",
+        color=0x6366f1
+    )
+    await canal.send(embed=embed, view=StaffPanelView())
+    await interaction.response.send_message(f"✅ Panel de staff enviado a {canal.mention}", ephemeral=True)
+
 @bot.event
 async def setup_hook():
     bot.add_view(TicketButton())
     bot.add_view(CloseTicketView())
+    bot.add_view(StaffPanelView())
+
+@tree.command(name="autosetup", description="🤖 Analiza el servidor y configura el bot automáticamente [Admin]")
+@app_commands.checks.has_permissions(administrator=True)
+async def autosetup(interaction: discord.Interaction):
+    await interaction.response.defer(thinking=True)
+    guild = interaction.guild
+    channels = guild.channels
+    roles    = guild.roles
+    members  = guild.members
+
+    text_ch = [c for c in channels if isinstance(c, (discord.TextChannel, discord.NewsChannel))]
+    cats    = [c for c in channels if isinstance(c, discord.CategoryChannel)]
+
+    def find_ch(*kws):
+        for kw in kws:
+            for c in text_ch:
+                if kw in c.name.lower(): return str(c.id)
+        return None
+
+    def find_cat(*kws):
+        for kw in kws:
+            for c in cats:
+                if kw in c.name.lower(): return str(c.id)
+        return None
+
+    def find_role(*kws):
+        for kw in kws:
+            for r in roles:
+                if kw in r.name.lower() and r.name != "@everyone": return str(r.id)
+        return None
+
+    welcome_ch  = find_ch("bienvenid","welcome","llegada","entrada","newmember")
+    goodbye_ch  = find_ch("despedid","salida","leave","adios","bienvenid","welcome")
+    log_ch      = find_ch("log","audit","registro","modlog","staff-log")
+    stream_ch   = find_ch("stream","alerta","live","directo","notif","kick")
+    announce_ch = find_ch("anunci","announcement","anuncio","noticias","news")
+    ticket_cat  = find_cat("ticket","soporte","support","ayuda","help")
+    member_role = find_role("miembro","member","verificado","verified","familia","integrante")
+    staff_role  = find_role("staff","moderador","mod","soporte","support")
+
+    cfg = load_config()
+    applied = []
+
+    if welcome_ch:
+        cfg["welcome"]["enabled"] = True; cfg["welcome"]["channel_id"] = welcome_ch
+        if member_role: cfg["welcome"]["auto_role_id"] = member_role
+        applied.append(f"✅ Bienvenida → <#{welcome_ch}>")
+    else: applied.append("⚠️ Bienvenida — canal no detectado (créalo con nombre 'bienvenida')")
+
+    if goodbye_ch:
+        cfg["goodbye"]["enabled"] = True; cfg["goodbye"]["channel_id"] = goodbye_ch
+        applied.append(f"✅ Despedida → <#{goodbye_ch}>")
+
+    if log_ch:
+        cfg["logs"]["enabled"] = True; cfg["logs"]["channel_id"] = log_ch
+        cfg["logs"]["events"]  = ["member_join","member_leave","message_delete","moderation","role_update"]
+        applied.append(f"✅ Logs → <#{log_ch}>")
+    else: applied.append("⚠️ Logs — canal no detectado (créalo con nombre 'logs')")
+
+    if stream_ch:
+        cfg["stream_alert"]["enabled"] = True; cfg["stream_alert"]["channel_id"] = stream_ch
+        applied.append(f"✅ Stream Alerts → <#{stream_ch}>")
+
+    if ticket_cat:
+        cfg["tickets"]["enabled"] = True; cfg["tickets"]["category_id"] = ticket_cat
+        if staff_role: cfg["tickets"]["support_role_id"] = staff_role
+        applied.append(f"✅ Tickets configurados")
+
+    cfg["moderation"]["anti_links"] = True
+    cfg["moderation"]["anti_spam"] = True
+    applied.append("✅ Anti-links + Anti-spam activados")
+
+    cfg["xp"]["enabled"] = True
+    if announce_ch: cfg["xp"]["levelup_channel_id"] = announce_ch
+    applied.append("✅ Sistema XP activado")
+
+    save_config(cfg)
+
+    human_count = sum(1 for m in members if not m.bot)
+    bot_count   = sum(1 for m in members if m.bot)
+
+    embed = discord.Embed(
+        title="🤖 Análisis Completado — The Family Bot",
+        description="\n".join(applied),
+        color=0x6366f1
+    )
+    embed.add_field(name="📊 Estadísticas", value=f"Canales: **{len(channels)}** | Roles: **{len(roles)}** | Humanos: **{human_count}** | Bots: **{bot_count}**", inline=False)
+    embed.add_field(name="💡 Siguiente paso", value="Usa `/ticket-setup #canal` para activar el panel de tickets con botones.", inline=False)
+    embed.set_footer(text=f"Configurado por {interaction.user} • {datetime.now().strftime('%H:%M:%S')}")
+    await interaction.followup.send(embed=embed)
 
 # ── ERROR HANDLER ─────────────────────────────────────────────
 @tree.error
@@ -460,6 +758,7 @@ async def on_error(interaction: discord.Interaction, error):
         await interaction.response.send_message("❌ No tienes permisos.", ephemeral=True)
     else:
         await interaction.response.send_message(f"❌ Error: {error}", ephemeral=True)
+
 
 # ── RUN ───────────────────────────────────────────────────────
 if TOKEN:
