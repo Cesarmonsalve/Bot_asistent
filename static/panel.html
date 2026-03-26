@@ -1629,21 +1629,40 @@
     }
   }
 
+  /* AI Console — conversation history for context */
+  const _aiHistory = [];
+
+  function _addTyping() {
+    const log = document.getElementById('ai-log');
+    if (!log) return;
+    const div = document.createElement('div');
+    div.className = 'log-entry bot';
+    div.id = '__typing__';
+    div.innerHTML = `<div class="ai-txt" style="opacity:0.5;font-style:italic;">⏳ Omega está pensando...</div>`;
+    log.appendChild(div); log.scrollTop = log.scrollHeight;
+  }
+  function _removeTyping() {
+    const t = document.getElementById('__typing__');
+    if (t) t.remove();
+  }
+
   /* AI Console */
   async function handleAIChat(e) {
-    if (e.key !== 'Enter') return;
+    if (e.key !== 'Enter' && e.type !== 'click') return;
     const input = document.getElementById('ai-input');
     const val = input.value.trim();
     if (!val) return;
     addLog(val, 'user');
+    _aiHistory.push({ role: 'user', content: val });
     input.value = ''; input.disabled = true;
+    _addTyping();
     try {
       const r = await fetch('/api/gemini/console', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({prompt: val})
+        body: JSON.stringify({ prompt: val, history: _aiHistory.slice(-10) })
       });
-      // Check content-type before parsing JSON to avoid the HTML error
+      _removeTyping();
       const ct = r.headers.get('content-type') || '';
       if (!ct.includes('application/json')) {
         if (r.status === 401) { window.location.reload(); return; }
@@ -1652,16 +1671,25 @@
         const data = await r.json();
         if (data.expired) { window.location.reload(); return; }
         if (!data.ok) {
-          addLog('Error: ' + data.error, 'err');
+          // ✅ FIX: lee data.error correctamente
+          addLog('⚠️ ' + (data.error || data.msg || 'Error desconocido de Omega.'), 'err');
         } else {
-          addLog((data.type === 'success' ? '✅ ' : '🤖 ') + data.msg, data.type === 'success' ? 'sys' : 'bot');
+          // ✅ FIX: el endpoint devuelve data.msg, NO data.response
+          const texto = data.msg || data.message || data.reply || 'Entendido.';
+          const tipo  = data.type === 'success' ? 'sys' : 'bot';
+          addLog((data.type === 'success' ? '✅ ' : '🤖 ') + texto, tipo);
+          _aiHistory.push({ role: 'assistant', content: texto });
         }
       }
     } catch (err) {
-      addLog('Error de red: ' + err.message, 'err');
+      _removeTyping();
+      addLog('Error de red: ' + (err && err.message ? err.message : 'Verifica la conexión.'), 'err');
     }
     input.disabled = false; input.focus();
   }
+
+  // Bridge: HTML calls sendAImessage(), routes to handleAIChat
+  function sendAImessage() { handleAIChat({ type: 'click' }); }
 
   function initAIAgent() {
     fetch('/api/autoconfig', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'})
