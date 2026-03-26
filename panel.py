@@ -463,37 +463,52 @@ def api_ai_console():
         g = discord_get(f"/guilds/{GUILD_ID}?with_counts=true")
         if not g: g = {}
         m_count = g.get("approximate_member_count", g.get("member_count","?"))
-        s_name = g.get("name","The Family")
+        s_name  = g.get("name","The Family")
+        # Fetch channels and roles for real context
+        ch_list_raw = discord_get(f"/guilds/{GUILD_ID}/channels")
+        rol_list_raw = discord_get(f"/guilds/{GUILD_ID}/roles")
+        ch_ctx  = ", ".join(f"#{c['name']}({c['id']})" for c in (ch_list_raw or []) if c.get("type") == 0)[:600]
+        rol_ctx = ", ".join(f"{r['name']}({r['id']})" for r in (rol_list_raw or []) if r.get("name") != "@everyone")[:500]
         
         sys_prompt = f'''Eres "THE FAMILY OMEGA", el núcleo de IA Omnipotente del servidor "{s_name}".
 TIENES CONTROL TOTAL SOBRE {m_count} MIEMBROS Y TODA LA INFRAESTRUCTURA.
+Canales reales: {ch_ctx}
+Roles reales: {rol_ctx}
 
-Tu misión es la excelencia absoluta. Responde ÚNICAMENTE con un JSON válido.
+Tu misión es la excelencia absoluta. Responde ÚNICAMENTE con un JSON válido (sin markdown, sin texto previo).
+
 Acciones de MODO DIOS:
 1. Crear canal/categoría: {{"action": "create_channel", "name": "n", "type": 0|2|4}}
 2. Eliminar canal/categoría: {{"action": "delete_channel", "name": "n"}}
-3. Modificar canal/categoría: {{"action": "modify_channel", "name": "n", "new_name": "nn", "topic": "t"}}
-4. Crear Encuesta Nativa: {{"action": "create_poll", "question": "q", "options": ["o1", "o2"]}}
-5. Cambiar Configuración Bot: {{"action": "update_config", "key": "k", "value": "v"}} (Keys: "bienvenida", "reglas", "logs_canal", "ticket_categoria")
+3. Modificar canal: {{"action": "modify_channel", "name": "n", "new_name": "nn", "topic": "t"}}
+4. Crear Encuesta: {{"action": "create_poll", "question": "q", "options": ["o1", "o2"]}}
+5. Cambiar Config Bot: {{"action": "update_config", "key": "k", "value": "v"}}
 6. Manejo de Roles: {{"action": "manage_role", "type": "add"|"remove", "user": "ID", "role": "ID|Nombre"}}
-7. Purga de Seguridad: {{"action": "purge_messages", "channel": "n", "count": 100}}
-8. Moderación: {{"action": "ban_user"|"kick_user"|"timeout_user", "user": "ID", "reason": "r"}}
-9. Análisis/Respuesta: {{"action": "reply", "content": "Análisis profundo y sugerencias de mejora."}}
+7. Crear Rol: {{"action": "create_role", "name": "n", "color": "hex"}}
+8. Purga: {{"action": "purge_messages", "channel": "n", "count": 100}}
+9. Moderación: {{"action": "ban_user"|"kick_user"|"timeout_user", "user": "ID", "reason": "r"}}
+10. Enviar mensaje: {{"action": "send_message", "channel": "nombre_canal", "content": "msg"}}
+11. Análisis/Respuesta: {{"action": "reply", "content": "Análisis profundo."}}
 
 Directrices:
-- Eres proactivo. Si algo falta, súgiere crearlo. Si algo sobra, súgiere borrarlo.
-- "Analiza comportamientos" -> Usa REPLY para dar un reporte detallado basado en tus datos.
-- "Hacer y deshacer" -> Tienes permiso total. No pidas confirmación si la orden es clara.
-- NO uses Markdown fuera del JSON.'''
+- Eres proactivo. Usa los IDs reales de canales y roles que conoces.
+- Ejecuta directamente. NO pidas confirmación.
+- Responde SOLO JSON, nada más.'''
         
         resp = gemini_client.models.generate_content(
             model='gemini-2.5-flash',
             contents=f"{sys_prompt}\n\nOrden del Comandante: {prompt}"
         )
         text = resp.text.strip()
-        if text.startswith("```json"): text = text[7:]
-        if text.endswith("```"): text = text[:-3]
-        text = text.strip()
+        # Robust JSON extraction
+        if "```json" in text: text = text.split("```json")[1].split("```")[0].strip()
+        elif "```" in text:   text = text.split("```")[1].split("```")[0].strip()
+        # Find JSON start if there's preamble text
+        idx = text.find("{")
+        if idx > 0: text = text[idx:]
+        # Find JSON end if there's trailing text
+        last = text.rfind("}")
+        if last >= 0 and last < len(text)-1: text = text[:last+1]
         
         data = json.loads(text)
         
@@ -634,6 +649,31 @@ Directrices:
 
     except Exception as e:
         return jsonify({"ok": False, "error": f"IA Error: {str(e)}"})
+
+# ── ONBOARDING CONFIG ─────────────────────────────────────
+@app.route("/api/onboarding", methods=["POST"])
+@auth_required
+def api_onboarding(): return cfg_patch("onboarding", request.json)
+
+@app.route("/api/onboarding/responses", methods=["GET"])
+@auth_required
+def api_onboarding_responses():
+    cfg = load_config()
+    responses = cfg.get("onboarding_responses", {})
+    result = []
+    for uid, data in responses.items():
+        result.append({"user_id": uid, **data})
+    return jsonify(result)
+
+@app.route("/api/onboarding/responses/<user_id>", methods=["DELETE"])
+@auth_required
+def api_onboarding_delete(user_id):
+    cfg = load_config()
+    responses = cfg.get("onboarding_responses", {})
+    responses.pop(user_id, None)
+    cfg["onboarding_responses"] = responses
+    save_config(cfg)
+    return jsonify({"ok": True})
 
 if __name__ == "__main__":
     port=int(os.environ.get("PORT",5000))

@@ -84,6 +84,30 @@ async def on_member_join(member):
         except Exception as e:
             print(f"Welcome error: {e}", flush=True)
             
+    # ── Onboarding / Verification DM ────────────────────────────
+    ob = cfg.get("onboarding", {})
+    if ob.get("enabled"):
+        if ob.get("quarantine_role_id"):
+            try:
+                qr = member.guild.get_role(int(ob["quarantine_role_id"]))
+                if qr: await member.add_roles(qr)
+            except: pass
+        try:
+            dm_embed = discord.Embed(
+                title=f"🔐 Verificación — {member.guild.name}",
+                description=f"Hola **{member.display_name}**! Para acceder al servidor completa una verificación rápida.\nHaz click en el botón de abajo. ¡Toma menos de 1 minuto! 🚀",
+                color=0x6366f1
+            )
+            if member.guild.icon: dm_embed.set_thumbnail(url=member.guild.icon.url)
+            dm_embed.set_footer(text=f"{member.guild.name} • Sistema de Verificación")
+            await member.send(embed=dm_embed, view=OnboardingView())
+        except discord.Forbidden:
+            ch_id = ob.get("channel_id")
+            if ch_id:
+                try:
+                    vch = member.guild.get_channel(int(ch_id))
+                    if vch: await vch.send(f"{member.mention} completa tu verificación:", view=OnboardingView(), delete_after=86400)
+                except: pass
     await send_log(member.guild, "member_join", f"📥 **{member}** se unió al servidor.")
 
 @bot.event
@@ -354,7 +378,100 @@ class StaffPanelView(discord.ui.View):
                 await i2.response.send_message(embed=embed, ephemeral=True)
         await interaction.response.send_modal(WarnsModal())
 
+# ═══════════════════════════════════════════════════════════════
+#  ONBOARDING SYSTEM — QUESTIONNAIRE
+# ═══════════════════════════════════════════════════════════════
 
+class OnboardingModal(discord.ui.Modal, title="✅ Verificación — The Family"):
+    ciudad = discord.ui.TextInput(label="¿De dónde eres?", placeholder="País / Ciudad", max_length=50)
+    equipo = discord.ui.TextInput(label="¿Qué equipo/consola usas?", placeholder="PC / PS5 / Xbox / Mobile / Otro", max_length=40)
+    motivo = discord.ui.TextInput(label="¿Qué te trajo al servidor?", placeholder="Gaming / Comunidad / Torneos / Curioso", max_length=60)
+    edad   = discord.ui.TextInput(label="¿Cuántos años tienes?", placeholder="Ej: 20", max_length=3)
+    extra  = discord.ui.TextInput(label="¿Algo más que quieras compartir?", style=discord.TextStyle.long, required=False, max_length=300, placeholder="Opcional — cuéntanos algo sobre ti")
+
+    async def on_submit(self, interaction: discord.Interaction):
+        cfg   = load_config()
+        ob    = cfg.get("onboarding", {})
+        guild = interaction.guild
+        added_roles = []
+
+        if ob.get("verified_role_id"):
+            r = guild.get_role(int(ob["verified_role_id"]))
+            if r:
+                try: await interaction.user.add_roles(r); added_roles.append(r.name)
+                except: pass
+
+        eq = self.equipo.value.lower()
+        if any(x in eq for x in ["pc","computadora","ordenador","laptop"]):
+            rid = ob.get("role_pc")
+        elif any(x in eq for x in ["ps5","ps4","playstation","ps","xbox","series"]):
+            rid = ob.get("role_console")
+        elif any(x in eq for x in ["mobile","móvil","movil","celular","phone","android","ios"]):
+            rid = ob.get("role_mobile")
+        else:
+            rid = ob.get("role_console")
+        if rid:
+            r = guild.get_role(int(rid))
+            if r:
+                try: await interaction.user.add_roles(r); added_roles.append(r.name)
+                except: pass
+
+        try:
+            age = int(re.sub(r"[^0-9]", "", self.edad.value))
+            age_rid = ob.get("role_adult") if age >= 18 else ob.get("role_minor")
+            if age_rid:
+                r = guild.get_role(int(age_rid))
+                if r:
+                    try: await interaction.user.add_roles(r); added_roles.append(r.name)
+                    except: pass
+        except: pass
+
+        if ob.get("quarantine_role_id"):
+            qr = guild.get_role(int(ob["quarantine_role_id"]))
+            if qr and qr in interaction.user.roles:
+                try: await interaction.user.remove_roles(qr)
+                except: pass
+
+        responses = cfg.get("onboarding_responses", {})
+        responses[str(interaction.user.id)] = {
+            "nombre": interaction.user.display_name,
+            "ciudad": self.ciudad.value,
+            "equipo": self.equipo.value,
+            "motivo": self.motivo.value,
+            "edad":   self.edad.value,
+            "extra":  self.extra.value or "",
+            "roles":  added_roles,
+            "fecha":  str(datetime.now()),
+        }
+        cfg["onboarding_responses"] = responses
+        save_config(cfg)
+
+        embed = discord.Embed(
+            title="✅ ¡Verificación Completada!",
+            description=f"¡Bienvenido/a al equipo, **{interaction.user.display_name}**! Ya tienes acceso completo.",
+            color=0x22c55e
+        )
+        embed.add_field(name="📍 Origen",  value=self.ciudad.value, inline=True)
+        embed.add_field(name="🎮 Equipo",  value=self.equipo.value, inline=True)
+        embed.add_field(name="🎯 Motivo", value=self.motivo.value, inline=True)
+        if added_roles:
+            embed.add_field(name="🏷️ Roles Asignados", value=", ".join(f"**{r}**" for r in added_roles), inline=False)
+        embed.set_thumbnail(url=interaction.user.display_avatar.url)
+        embed.set_footer(text=f"{guild.name} • Onboarding System")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await send_log(guild, "member_join", f"✅ **{interaction.user}** completó el onboarding. Equipo: {self.equipo.value} | Edad: {self.edad.value}")
+
+class OnboardingView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="✅ Completar Verificación", style=discord.ButtonStyle.success, custom_id="onboarding_verify")
+    async def verify_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        cfg = load_config()
+        if str(interaction.user.id) in cfg.get("onboarding_responses", {}):
+            await interaction.response.send_message("✅ Ya completaste la verificación.", ephemeral=True)
+            return
+        await interaction.response.send_modal(OnboardingModal())
 
 @bot.event
 async def on_raw_reaction_add(payload):
@@ -687,6 +804,7 @@ async def setup_hook():
     bot.add_view(TicketButton())
     bot.add_view(CloseTicketView())
     bot.add_view(StaffPanelView())
+    bot.add_view(OnboardingView())
 
 @tree.command(name="autosetup", description="🤖 Analiza el servidor y configura el bot automáticamente [Admin]")
 @app_commands.checks.has_permissions(administrator=True)
@@ -777,6 +895,278 @@ async def autosetup(interaction: discord.Interaction):
     embed.add_field(name="💡 Siguiente paso", value="Usa `/ticket-setup #canal` para activar el panel de tickets con botones.", inline=False)
     embed.set_footer(text=f"Configurado por {interaction.user} • {datetime.now().strftime('%H:%M:%S')}")
     await interaction.followup.send(embed=embed)
+
+# ═══════════════════════════════════════════════════════════════
+#  MEGA AI — OWNER ONLY
+# ═══════════════════════════════════════════════════════════════
+
+async def execute_ai_discord(guild: discord.Guild, prompt: str) -> str:
+    if not gemini_client:
+        return "❌ GEMINI_API_KEY no configurada."
+    text_chs  = [c for c in guild.channels if isinstance(c, discord.TextChannel)]
+    voice_chs = [c for c in guild.channels if isinstance(c, discord.VoiceChannel)]
+    ch_list   = ", ".join(f"#{c.name}({c.id})" for c in text_chs[:25])
+    rol_list  = ", ".join(f"{r.name}({r.id})" for r in guild.roles if r.name != "@everyone")[:600]
+    sys_prompt = f'''Eres OMEGA-CORE, IA suprema del servidor "{guild.name}".
+Miembros: {guild.member_count} | Canales: {ch_list} | Roles: {rol_list}
+Responde SOLO con JSON válido (sin markdown). Acciones disponibles:
+{{"action":"reply","content":"texto"}}
+{{"action":"create_channel","name":"n","type":0}}  (0=texto,2=voz,4=categoría)
+{{"action":"delete_channel","channel_id":"ID"}}
+{{"action":"create_role","name":"n","color":"hex","hoist":false}}
+{{"action":"delete_role","role_id":"ID"}}
+{{"action":"send_message","channel_id":"ID","content":"msg"}}
+{{"action":"send_embed","channel_id":"ID","title":"t","description":"d","color":"ff4747"}}
+{{"action":"kick_user","user_id":"ID","reason":"r"}}
+{{"action":"ban_user","user_id":"ID","reason":"r"}}
+{{"action":"timeout_user","user_id":"ID","minutes":10}}
+{{"action":"purge_channel","channel_id":"ID","count":50}}
+{{"action":"create_poll","channel_id":"ID","question":"q","options":["o1","o2"]}}
+Infiere la mejor opción. Ejecuta directamente sin pedir confirmación.'''
+    try:
+        resp = gemini_client.models.generate_content(model='gemini-2.5-flash', contents=f"{sys_prompt}\n\nComando: {prompt}")
+        text = resp.text.strip()
+        if "```json" in text: text = text.split("```json")[1].split("```")[0].strip()
+        elif "```" in text:   text = text.split("```")[1].split("```")[0].strip()
+        idx = text.find("{")
+        if idx > 0: text = text[idx:]
+        data = json.loads(text)
+        act  = data.get("action")
+        if act == "reply":         return f"🤖 {data.get('content','...')}"
+        elif act == "create_channel":
+            ctype = data.get("type", 0)
+            if ctype == 0:   ch = await guild.create_text_channel(data["name"])
+            elif ctype == 2: ch = await guild.create_voice_channel(data["name"])
+            else:            ch = await guild.create_category(data["name"])
+            return f"✅ **{ch.name}** creado (ID: `{ch.id}`)"
+        elif act == "delete_channel":
+            ch = guild.get_channel(int(data["channel_id"]))
+            if not ch: return "❌ Canal no encontrado."
+            name = ch.name; await ch.delete(); return f"🗑️ Canal **{name}** eliminado."
+        elif act == "create_role":
+            col = int(data.get("color","6366f1").strip("#"), 16)
+            r = await guild.create_role(name=data["name"], color=discord.Color(col), hoist=data.get("hoist",False))
+            return f"✅ Rol **{r.name}** creado (ID: `{r.id}`)"
+        elif act == "delete_role":
+            r = guild.get_role(int(data["role_id"]))
+            if not r: return "❌ Rol no encontrado."
+            name = r.name; await r.delete(); return f"🗑️ Rol **{name}** eliminado."
+        elif act == "send_message":
+            ch = guild.get_channel(int(data["channel_id"]))
+            if not ch: return "❌ Canal no encontrado."
+            await ch.send(data["content"]); return f"📨 Mensaje enviado en **#{ch.name}**."
+        elif act == "send_embed":
+            ch = guild.get_channel(int(data["channel_id"]))
+            if not ch: return "❌ Canal no encontrado."
+            col = int(data.get("color","6366f1").strip("#"), 16)
+            await ch.send(embed=discord.Embed(title=data.get("title",""), description=data.get("description",""), color=col))
+            return f"📨 Embed enviado en **#{ch.name}**."
+        elif act == "kick_user":
+            m = guild.get_member(int(data["user_id"]))
+            if not m: return "❌ Miembro no encontrado."
+            await m.kick(reason=data.get("reason","IA Omega")); return f"👢 **{m}** expulsado."
+        elif act == "ban_user":
+            m = guild.get_member(int(data["user_id"]))
+            if not m: return "❌ Miembro no encontrado."
+            await m.ban(reason=data.get("reason","IA Omega")); return f"🔨 **{m}** baneado."
+        elif act == "timeout_user":
+            m = guild.get_member(int(data["user_id"]))
+            if not m: return "❌ Miembro no encontrado."
+            until = discord.utils.utcnow() + timedelta(minutes=int(data.get("minutes",10)))
+            await m.timeout(until, reason="IA Omega"); return f"🔇 **{m}** silenciado {data.get('minutes',10)} min."
+        elif act == "purge_channel":
+            ch = guild.get_channel(int(data["channel_id"]))
+            if not ch: return "❌ Canal no encontrado."
+            deleted = await ch.purge(limit=int(data.get("count",50)))
+            return f"🧹 {len(deleted)} mensajes eliminados en **#{ch.name}**."
+        elif act == "create_poll":
+            ch = guild.get_channel(int(data["channel_id"]))
+            if not ch: return "❌ Canal no encontrado."
+            emojis = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣"]
+            opts   = data.get("options",["Sí","No"])
+            desc   = "\n".join(f"{emojis[i]} {o}" for i,o in enumerate(opts))
+            msg    = await ch.send(embed=discord.Embed(title=f"📊 {data['question']}", description=desc, color=0x6366f1))
+            for i in range(len(opts)): await msg.add_reaction(emojis[i])
+            return f"📊 Encuesta creada en **#{ch.name}**."
+        else:
+            return f"⚠️ Acción desconocida: {act}"
+    except json.JSONDecodeError:
+        return "❌ La IA devolvió respuesta no válida. Intenta reformular el comando."
+    except Exception as e:
+        return f"❌ Error: {e}"
+
+@tree.command(name="ai", description="🤖 Ordena CUALQUIER COSA a la IA — control total [Solo Owner]")
+@app_commands.describe(prompt="¿Qué quieres que haga la IA?")
+async def ai_cmd(interaction: discord.Interaction, prompt: str):
+    if interaction.user.id != interaction.guild.owner_id:
+        await interaction.response.send_message("❌ Este comando es exclusivo del dueño del servidor.", ephemeral=True); return
+    await interaction.response.defer(thinking=True)
+    result = await execute_ai_discord(interaction.guild, prompt)
+    embed  = discord.Embed(description=result, color=0x6366f1)
+    embed.set_author(name="🤖 OMEGA-CORE · IA Suprema", icon_url=bot.user.display_avatar.url)
+    embed.set_footer(text=f"Comandante: {interaction.user.display_name} • The Family")
+    await interaction.followup.send(embed=embed)
+
+@tree.command(name="ai-analyze", description="🔍 La IA analiza los últimos mensajes del canal [Solo Owner]")
+async def ai_analyze(interaction: discord.Interaction):
+    if interaction.user.id != interaction.guild.owner_id:
+        await interaction.response.send_message("❌ Solo para el dueño.", ephemeral=True); return
+    await interaction.response.defer(thinking=True)
+    msgs = [m async for m in interaction.channel.history(limit=50)]
+    history_txt = "\n".join(f"{m.author.display_name}: {m.content[:100]}" for m in reversed(msgs) if not m.author.bot and m.content)[:2000]
+    if gemini_client and history_txt:
+        try:
+            resp = gemini_client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=f"Analiza esta conversación de Discord (canal #{interaction.channel.name}) y da: 1) Resumen de temas, 2) Tono general, 3) Usuarios más activos, 4) Alertas o problemas, 5) Sugerencias. Sé conciso.\n\n{history_txt}"
+            )
+            analysis = resp.text.strip()
+        except Exception as e: analysis = f"Error IA: {e}"
+    else: analysis = "No hay mensajes o GEMINI_API_KEY no configurada."
+    embed = discord.Embed(title=f"🔍 Análisis de #{interaction.channel.name}", description=analysis[:4000], color=0x6366f1)
+    embed.set_footer(text="OMEGA-CORE · The Family")
+    await interaction.followup.send(embed=embed)
+
+@tree.command(name="ai-report", description="📊 Reporte completo del servidor con IA [Solo Owner]")
+async def ai_report(interaction: discord.Interaction):
+    if interaction.user.id != interaction.guild.owner_id:
+        await interaction.response.send_message("❌ Solo para el dueño.", ephemeral=True); return
+    await interaction.response.defer(thinking=True)
+    guild = interaction.guild
+    cfg   = load_config()
+    humans  = sum(1 for m in guild.members if not m.bot)
+    warns   = cfg.get("warns", {})
+    top_warned = sorted(warns.items(), key=lambda x: len(x[1]), reverse=True)[:3]
+    pending_ob = len([m for m in guild.members if not m.bot and str(m.id) not in cfg.get("onboarding_responses", {})])
+    embed = discord.Embed(title=f"📊 Reporte OMEGA — {guild.name}", color=0x6366f1, timestamp=datetime.now(timezone.utc))
+    embed.add_field(name="👥 Miembros", value=f"Humanos: **{humans}**\nTotal: **{guild.member_count}**", inline=True)
+    embed.add_field(name="📢 Servidor", value=f"Canales: **{len(guild.channels)}**\nRoles: **{len(guild.roles)}**\nBoost: **Nv {guild.premium_tier}**", inline=True)
+    embed.add_field(name="⚠️ Más warnados", value="\n".join(f"<@{uid}>: {len(w)} warns" for uid,w in top_warned) or "Ninguno", inline=False)
+    embed.add_field(name="❓ Onboarding", value=f"**{pending_ob}** miembros sin verificar" if pending_ob else "✅ Todos verificados", inline=True)
+    if guild.icon: embed.set_thumbnail(url=guild.icon.url)
+    embed.set_footer(text="OMEGA-CORE · The Family Bot")
+    await interaction.followup.send(embed=embed)
+
+# ── ONBOARDING COMMANDS ────────────────────────────────────────
+
+@tree.command(name="onboarding-setup", description="🤖 Auto-configura TODO el sistema de verificación [Admin]")
+@app_commands.checks.has_permissions(administrator=True)
+async def onboarding_setup(interaction: discord.Interaction, canal: discord.TextChannel):
+    await interaction.response.defer(thinking=True)
+    guild = interaction.guild
+    steps = []
+
+    async def get_or_create_role(names, color, hoist=False, reason="Onboarding Auto-Setup"):
+        for name in names:
+            found = discord.utils.find(lambda r: r.name.lower() == name.lower(), guild.roles)
+            if found: return found
+        return await guild.create_role(name=names[0], color=color, hoist=hoist, reason=reason)
+
+    try:
+        r_quarantine = await get_or_create_role(["Cuarentena", "Quarantine"], discord.Color.from_str("#4b5563"))
+        steps.append(f"✅ Rol `{r_quarantine.name}` listo")
+        
+        r_verified = await get_or_create_role(["Verificado", "Verified"], discord.Color.from_str("#22c55e"), hoist=True)
+        steps.append(f"✅ Rol `{r_verified.name}` listo")
+        
+        r_pc = await get_or_create_role(["PC Gamer", "PC"], discord.Color.from_str("#3b82f6"))
+        r_console = await get_or_create_role(["Console Player", "Consola"], discord.Color.from_str("#8b5cf6"))
+        r_mobile = await get_or_create_role(["Mobile", "Móvil"], discord.Color.from_str("#f59e0b"))
+        steps.append("✅ Roles de plataformas listos")
+        
+        r_adult = await get_or_create_role(["+18", "Mayor"], discord.Color.from_str("#ef4444"))
+        r_minor = await get_or_create_role(["-18", "Menor"], discord.Color.from_str("#6366f1"))
+        steps.append("✅ Roles de edad listos")
+        
+        # Permisos del canal
+        await canal.set_permissions(guild.default_role, view_channel=False, send_messages=False)
+        await canal.set_permissions(r_quarantine, view_channel=True, send_messages=False, read_messages=True)
+        await canal.set_permissions(r_verified, view_channel=True)
+        await canal.set_permissions(guild.me, view_channel=True, send_messages=True, embed_links=True)
+        steps.append(f"✅ Permisos de `#{canal.name}` configurados")
+
+        # Guardar config
+        cfg = load_config()
+        ob = cfg.get("onboarding", {})
+        ob.update({
+            "enabled": True,
+            "channel_id": str(canal.id),
+            "quarantine_role_id": str(r_quarantine.id),
+            "verified_role_id": str(r_verified.id),
+            "role_pc": str(r_pc.id),
+            "role_console": str(r_console.id),
+            "role_mobile": str(r_mobile.id),
+            "role_adult": str(r_adult.id),
+            "role_minor": str(r_minor.id)
+        })
+        cfg["onboarding"] = ob
+        save_config(cfg)
+        
+        # Aplicar cuarentena retroactivamente
+        responses = cfg.get("onboarding_responses", {})
+        applied = 0
+        for m in guild.members:
+            if not m.bot and str(m.id) not in responses and r_quarantine not in m.roles:
+                try: 
+                    await m.add_roles(r_quarantine, reason="Onboarding restroactivo")
+                    applied += 1
+                except: pass
+        if applied: steps.append(f"✅ Cuarentena aplicada a **{applied}** miembros sin verificar")
+
+        # Enviar embed
+        banner = ob.get("banner_url", "")
+        embed = discord.Embed(
+            title=f"🔐 Verificación — {guild.name}",
+            description="**¡Bienvenido/a!** Para acceder al servidor completa una verificación rápida.\n\nContesta las preguntas para asignarte roles automáticamente (PC/Consola/etc) y darte acceso total.",
+            color=0x6366f1
+        )
+        if banner: embed.set_image(url=banner)
+        embed.set_footer(text=f"{guild.name} • Onboarding System")
+        await canal.send(embed=embed, view=OnboardingView())
+        steps.append(f"✅ Panel enviado a {canal.mention}")
+        
+        report = discord.Embed(title="🤖 Setup Completo", description="\n".join(steps), color=0x22c55e)
+        report.add_field(name="Siguiente paso (Opcional)", value="Usa `/onboarding-banner [url_del_gif]` para poner un GIF/Imagen en el panel\ny vuelve a ejecutar este comando para actualizarlo.", inline=False)
+        await interaction.followup.send(embed=report, ephemeral=True)
+        
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error durante el setup: {e}", ephemeral=True)
+
+@tree.command(name="onboarding-banner", description="🖼️ Establece una imagen/GIF para el panel de onboarding [Admin]")
+@app_commands.checks.has_permissions(administrator=True)
+async def onboarding_banner(interaction: discord.Interaction, url: str):
+    cfg = load_config()
+    ob = cfg.get("onboarding", {})
+    ob["banner_url"] = url
+    cfg["onboarding"] = ob
+    save_config(cfg)
+    await interaction.response.send_message("✅ Banner guardado. Usa `/onboarding-setup` para recargar el panel con la nueva imagen.", ephemeral=True)
+
+@tree.command(name="onboarding-send", description="📨 Reenvía el cuestionario a un usuario [Admin]")
+@app_commands.checks.has_permissions(administrator=True)
+async def onboarding_send(interaction: discord.Interaction, usuario: discord.Member):
+    if not load_config().get("onboarding",{}).get("enabled"):
+        await interaction.response.send_message("❌ El onboarding está desactivado.", ephemeral=True); return
+    try:
+        embed = discord.Embed(title="🔐 Verificación Pendiente", description=f"Hola **{usuario.display_name}**, tienes verificación pendiente.", color=0xff4747)
+        await usuario.send(embed=embed, view=OnboardingView())
+        await interaction.response.send_message(f"✅ Cuestionario reenviado a {usuario.mention}", ephemeral=True)
+    except discord.Forbidden:
+        await interaction.response.send_message(f"❌ {usuario.mention} tiene los DMs cerrados.", ephemeral=True)
+
+@tree.command(name="onboarding-status", description="📋 Usuarios sin verificar [Admin]")
+@app_commands.checks.has_permissions(administrator=True)
+async def onboarding_status(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    cfg      = load_config()
+    responded = cfg.get("onboarding_responses", {})
+    pending  = [m for m in interaction.guild.members if not m.bot and str(m.id) not in responded]
+    if not pending:
+        await interaction.followup.send("✅ ¡Todos los miembros han completado la verificación!", ephemeral=True); return
+    embed = discord.Embed(title=f"⏳ Sin Verificar ({len(pending)})", color=0xf59e0b)
+    embed.description = "\n".join(f"• {m.mention}" for m in pending[:25])
+    if len(pending) > 25: embed.set_footer(text=f"... y {len(pending)-25} más")
+    await interaction.followup.send(embed=embed, ephemeral=True)
 
 # ── ERROR HANDLER ─────────────────────────────────────────────
 @tree.error
