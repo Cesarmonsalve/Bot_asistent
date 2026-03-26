@@ -1,0 +1,15 @@
+{
+  "welcome": { "enabled": false, "channel_id": null, "message": "👋 Bienvenido/a {user} a **{server}**! Ya somos {count} en la familia. 🎉", "banner_url": "", "auto_role_id": null },
+  "goodbye": { "enabled": false, "channel_id": null, "message": "👋 **{username}** salió del servidor." },
+  "xp": { "enabled": false, "levelup_channel_id": null },
+  "xp_data": {},
+  "moderation": { "anti_links": false, "anti_spam": false },
+  "word_filter": { "enabled": false, "words": [] },
+  "stream_alert": { "enabled": false, "channel_id": null, "kick_username": "", "tiktok_username": "", "message": "🔴 **{username}** está en vivo! → {url}" },
+  "reaction_roles": [],
+  "logs": { "enabled": false, "channel_id": null, "events": ["member_join","member_leave","moderation","message_delete","role_update"] },
+  "custom_commands": {},
+  "warns": {},
+  "tickets": { "enabled": false, "category_id": null, "support_role_id": null, "message": "🎫 Haz click en el botón para abrir un ticket de soporte." },
+  "auto_roles": []
+}
