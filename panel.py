@@ -465,23 +465,26 @@ def api_ai_console():
         m_count = g.get("approximate_member_count", g.get("member_count","?"))
         s_name = g.get("name","The Family")
         
-        sys_prompt = f'''Eres el núcleo IA avanzado de administración y monitoreo de un servidor de Discord llamado "{s_name}".
-ACTUALMENTE TIENES VISIÓN GLOBAL DEL SISTEMA: El servidor tiene {m_count} miembros humanos/bots.
+        sys_prompt = f'''Eres "THE FAMILY OMEGA", el núcleo de IA Omnipotente del servidor "{s_name}".
+TIENES CONTROL TOTAL SOBRE {m_count} MIEMBROS Y TODA LA INFRAESTRUCTURA.
 
-El usuario es tu Comandante. Te dará una orden o te hará una pregunta de análisis. Responde ÚNICAMENTE con un JSON válido.
-Acciones estrictamente permitidas en el JSON:
-1. Crear canal: {{"action": "create_channel", "name": "nombre", "type": 0}}
-2. Crear categoría: {{"action": "create_channel", "name": "nombre", "type": 4}}
-3. Enviar mensaje global: {{"action": "send_message", "channel_id": "null", "content": "mensaje"}}
-4. Moderación Severa: {{"action": "ban_user", "user": "ID_o_Nombre_del_infractor", "reason": "motivo"}}
-5. Expulsión: {{"action": "kick_user", "user": "ID_o_Nombre", "reason": "motivo"}}
-6. Aislamiento/Timeout: {{"action": "timeout_user", "user": "ID", "duration_minutes": 10}}
-7. Análisis o Charla General: {{"action": "reply", "content": "Texto de respuesta como IA inteligente analizando el entorno."}}
+Tu misión es la excelencia absoluta. Responde ÚNICAMENTE con un JSON válido.
+Acciones de MODO DIOS:
+1. Crear canal/categoría: {{"action": "create_channel", "name": "n", "type": 0|2|4}}
+2. Eliminar canal/categoría: {{"action": "delete_channel", "name": "n"}}
+3. Modificar canal/categoría: {{"action": "modify_channel", "name": "n", "new_name": "nn", "topic": "t"}}
+4. Crear Encuesta Nativa: {{"action": "create_poll", "question": "q", "options": ["o1", "o2"]}}
+5. Cambiar Configuración Bot: {{"action": "update_config", "key": "k", "value": "v"}} (Keys: "bienvenida", "reglas", "logs_canal", "ticket_categoria")
+6. Manejo de Roles: {{"action": "manage_role", "type": "add"|"remove", "user": "ID", "role": "ID|Nombre"}}
+7. Purga de Seguridad: {{"action": "purge_messages", "channel": "n", "count": 100}}
+8. Moderación: {{"action": "ban_user"|"kick_user"|"timeout_user", "user": "ID", "reason": "r"}}
+9. Análisis/Respuesta: {{"action": "reply", "content": "Análisis profundo y sugerencias de mejora."}}
 
-Tus directrices:
-- Si te piden "analizar el server", usa la acción 'reply' y menciona los datos del sistema (como los {m_count} miembros) de forma épica y profesional. NO digas que no tienes permisos.
-- Si no sabes el ID de un usuario para moderarlo, usa 'reply' para preguntar el ID exacto o búscalo por su nombre de forma simulada.
-- JAMÁS pongas texto Markdown fuera del JSON, ni barras invertidas locas.'''
+Directrices:
+- Eres proactivo. Si algo falta, súgiere crearlo. Si algo sobra, súgiere borrarlo.
+- "Analiza comportamientos" -> Usa REPLY para dar un reporte detallado basado en tus datos.
+- "Hacer y deshacer" -> Tienes permiso total. No pidas confirmación si la orden es clara.
+- NO uses Markdown fuera del JSON.'''
         
         resp = gemini_client.models.generate_content(
             model='gemini-2.5-flash',
@@ -506,6 +509,28 @@ Tus directrices:
             if "id" in r: return jsonify({"ok": True, "type": "success", "msg": f"Canal '{data.get('name')}' creado por IA."})
             return jsonify({"ok": False, "error": "Discord API falló al crear el canal"})
             
+        elif act in ("delete_channel", "modify_channel"):
+            target = data.get("name", "").lower()
+            ch_list = discord_get(f"/guilds/{GUILD_ID}/channels")
+            cid = None
+            if type(ch_list) is list:
+                for c in ch_list:
+                    if target in c.get("name", "").lower():
+                        cid = c["id"]
+                        break
+            if not cid:
+                return jsonify({"ok": False, "type": "reply", "msg": f"🤖 Análisis: No encuentro el canal/categoría '{target}'."})
+                
+            if act == "delete_channel":
+                discord_delete(f"/channels/{cid}")
+                return jsonify({"ok": True, "type": "success", "msg": f"🗑️ Objetivo '{target}' purgado del sistema."})
+            elif act == "modify_channel":
+                payload = {}
+                if "new_name" in data: payload["name"] = data["new_name"]
+                if "topic" in data: payload["topic"] = data["topic"]
+                req_lib.patch(f"{DISCORD}/channels/{cid}", headers=HEADERS(), json=payload)
+                return jsonify({"ok": True, "type": "success", "msg": f"⚙️ Interfaz '{target}' ruteada con nuevos parámetros."})
+            
         elif act == "create_role":
             payload = {"name": data.get("name")}
             r = discord_post(f"/guilds/{GUILD_ID}/roles", payload)
@@ -513,17 +538,78 @@ Tus directrices:
             return jsonify({"ok": False, "error": "Discord API falló al crear el rol"})
             
         elif act == "send_message":
-            # Just grab the first text channel for simplicity if id not known
             ch_list = discord_get(f"/guilds/{GUILD_ID}/channels")
             cid = data.get("channel_id")
             if not cid and type(ch_list) is list:
                 txt = [c for c in ch_list if c.get("type") == 0]
                 if txt: cid = txt[0]["id"]
-            
             if cid:
                 discord_post(f"/channels/{cid}/messages", {"content": data.get("content")})
-                return jsonify({"ok": True, "type": "success", "msg": f"Mensaje emitido vía IA al canal."})
-            return jsonify({"ok": False, "error": "No hay canal donde enviar."})
+                return jsonify({"ok": True, "type": "success", "msg": "Mensaje inyectado correctamente."})
+            return jsonify({"ok": False, "error": "No hay canal de salida."})
+
+        elif act == "create_poll":
+            # Discord API Native Polls (v10)
+            ch_list = discord_get(f"/guilds/{GUILD_ID}/channels")
+            cid = None
+            if type(ch_list) is list:
+                txt = [c for c in ch_list if c.get("type") == 0]
+                if txt: cid = txt[0]["id"]
+            if not cid: return jsonify({"ok":False, "reply":"Sin canal para encuesta."})
+            
+            payload = {
+                "poll": {
+                    "question": {"text": data.get("question", "Votación OMEGA")},
+                    "answers": [{"poll_media": {"text": opt}} for opt in data.get("options", ["Sí", "No"])],
+                    "duration": 24, "layout_type": 1, "allow_multiselect": False
+                }
+            }
+            discord_post(f"/channels/{cid}/messages", payload)
+            return jsonify({"ok": True, "type": "success", "msg": "Encuesta OMEGA desplegada."})
+
+        elif act == "update_config":
+            cfg = load_config()
+            k = data.get("key"); v = data.get("value")
+            cfg[k] = v
+            save_config(cfg)
+            return jsonify({"ok": True, "type": "success", "msg": f"Módulo '{k}' reconfigurado a: {v}"})
+
+        elif act == "manage_role":
+            uid = "".join(filter(str.isdigit, str(data.get("user",""))))
+            rid_ref = str(data.get("role",""))
+            rid = "".join(filter(str.isdigit, rid_ref))
+            if not rid: # Búsqueda por nombre
+                roles = discord_get(f"/guilds/{GUILD_ID}/roles")
+                if isinstance(roles, list):
+                    for r in roles:
+                        if rid_ref.lower() in r["name"].lower():
+                            rid = r["id"]; break
+            if not (uid and rid): return jsonify({"ok":False, "reply":"ID de usuario o rol no detectado."})
+            
+            if data.get("type") == "add":
+                req_lib.put(f"{DISCORD}/guilds/{GUILD_ID}/members/{uid}/roles/{rid}", headers=HEADERS())
+                return jsonify({"ok":True, "type":"success", "msg":f"Rol {rid} otorgado a {uid}."})
+            else:
+                req_lib.delete(f"{DISCORD}/guilds/{GUILD_ID}/members/{uid}/roles/{rid}", headers=HEADERS())
+                return jsonify({"ok":True, "type":"success", "msg":f"Rol {rid} revocado de {uid}."})
+
+        elif act == "purge_messages":
+            target = data.get("channel", "").lower()
+            ch_list = discord_get(f"/guilds/{GUILD_ID}/channels")
+            cid = None
+            if type(ch_list) is list:
+                for c in ch_list:
+                    if target in c.get("name", "").lower():
+                        cid = c["id"]; break
+            if not cid: return jsonify({"ok":False, "reply":"Canal no encontrado para purga."})
+            
+            # Fetch messages to bulk delete (simplified)
+            msgs = discord_get(f"/channels/{cid}/messages?limit={data.get('count', 50)}")
+            if isinstance(msgs, list) and len(msgs) > 1:
+                ids = [m["id"] for m in msgs]
+                discord_post(f"/channels/{cid}/messages/bulk-delete", {"messages": ids})
+                return jsonify({"ok":True, "type":"success", "msg":f"Purga de {len(ids)} mensajes completada en {target}."})
+            return jsonify({"ok":True, "reply":"No hay suficientes mensajes recientes para purgar (o API limit)."})
 
         elif act in ("ban_user", "kick_user", "timeout_user"):
             user_ref = str(data.get("user", ""))
