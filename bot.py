@@ -1166,8 +1166,9 @@ Roles: {rol_list}
             act = act_data.get("action")
             if not act: continue
             try:
-                if act == "create_channel":
+                if act in ["create_channel", "create_category"]:
                     ctype = act_data.get("type", 0)
+                    if act == "create_category": ctype = 4
                     name = re.sub(r'[^a-zA-Z0-9\-_ ]', '', act_data.get("name", "canal"))[:100]
                     cat = guild.get_channel(int(act_data.get("category_id"))) if act_data.get("category_id") else None
                     if ctype == 0: ch = await guild.create_text_channel(name, category=cat)
@@ -1175,11 +1176,11 @@ Roles: {rol_list}
                     else: ch = await guild.create_category(name)
                     exec_msgs.append(f"✅ {{ch.name}} creado.")
 
-                elif act == "delete_channel":
+                elif act in ["delete_channel", "delete_category"]:
                     ch = guild.get_channel(int(act_data.get("channel_id", 0)))
                     if ch: await ch.delete(); exec_msgs.append(f"🗑️ Canal eliminado.")
 
-                elif act == "edit_channel":
+                elif act in ["edit_channel", "edit_category"]:
                     ch = guild.get_channel(int(act_data.get("channel_id", 0)))
                     if ch:
                         kwargs = {{}}
@@ -1267,7 +1268,7 @@ Roles: {rol_list}
                     m = guild.get_member(int(act_data.get("user_id", 0)))
                     if m and m.voice: await m.edit(mute=False); exec_msgs.append(f"🔊 {{m}} desmuteado en voz.")
 
-                elif act == "purge_channel":
+                elif act in ["purge_channel", "clear_messages", "clear_channel"]:
                     ch = guild.get_channel(int(act_data.get("channel_id", 0)))
                     if ch: d = await ch.purge(limit=int(act_data.get("count", 50))); exec_msgs.append(f"🧹 {{len(d)}} msgs purgados.")
 
