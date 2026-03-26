@@ -383,11 +383,18 @@ class StaffPanelView(discord.ui.View):
 # ═══════════════════════════════════════════════════════════════
 
 class OnboardingModal(discord.ui.Modal, title="✅ Verificación — The Family"):
-    ciudad = discord.ui.TextInput(label="¿De dónde eres?", placeholder="País / Ciudad", max_length=50)
-    equipo = discord.ui.TextInput(label="¿Qué equipo/consola usas?", placeholder="PC / PS5 / Xbox / Mobile / Otro", max_length=40)
-    motivo = discord.ui.TextInput(label="¿Qué te trajo al servidor?", placeholder="Gaming / Comunidad / Torneos / Curioso", max_length=60)
-    edad   = discord.ui.TextInput(label="¿Cuántos años tienes?", placeholder="Ej: 20", max_length=3)
-    extra  = discord.ui.TextInput(label="¿Algo más que quieras compartir?", style=discord.TextStyle.long, required=False, max_length=300, placeholder="Opcional — cuéntanos algo sobre ti")
+    def __init__(self):
+        super().__init__()
+        cfg = load_config()
+        ob = cfg.get("onboarding", {})
+        
+        self.q1 = discord.ui.TextInput(label=ob.get("q1", "¿De dónde eres?")[:45], placeholder=ob.get("p1", "País / Ciudad")[:95], max_length=50)
+        self.q2 = discord.ui.TextInput(label=ob.get("q2", "¿Qué equipo/consola usas?")[:45], placeholder=ob.get("p2", "PC / PS5 / Xbox / Mobile")[:95], max_length=40)
+        self.q3 = discord.ui.TextInput(label=ob.get("q3", "¿Qué te trajo al servidor?")[:45], placeholder=ob.get("p3", "Gaming / Torneos / Curioso")[:95], max_length=60)
+        self.q4 = discord.ui.TextInput(label=ob.get("q4", "¿Cuántos años tienes?")[:45], placeholder=ob.get("p4", "Ej: 20")[:95], max_length=3)
+        self.q5 = discord.ui.TextInput(label=ob.get("q5", "¿Algo más que quieras compartir?")[:45], style=discord.TextStyle.long, required=False, max_length=300, placeholder=ob.get("p5", "Opcional")[:95])
+        
+        for q in [self.q1, self.q2, self.q3, self.q4, self.q5]: self.add_item(q)
 
     async def on_submit(self, interaction: discord.Interaction):
         cfg   = load_config()
@@ -401,7 +408,7 @@ class OnboardingModal(discord.ui.Modal, title="✅ Verificación — The Family"
                 try: await interaction.user.add_roles(r); added_roles.append(r.name)
                 except: pass
 
-        eq = self.equipo.value.lower()
+        eq = self.q2.value.lower()
         if any(x in eq for x in ["pc","computadora","ordenador","laptop"]):
             rid = ob.get("role_pc")
         elif any(x in eq for x in ["ps5","ps4","playstation","ps","xbox","series"]):
@@ -417,7 +424,7 @@ class OnboardingModal(discord.ui.Modal, title="✅ Verificación — The Family"
                 except: pass
 
         try:
-            age = int(re.sub(r"[^0-9]", "", self.edad.value))
+            age = int(re.sub(r"[^0-9]", "", self.q4.value))
             age_rid = ob.get("role_adult") if age >= 18 else ob.get("role_minor")
             if age_rid:
                 r = guild.get_role(int(age_rid))
@@ -435,11 +442,11 @@ class OnboardingModal(discord.ui.Modal, title="✅ Verificación — The Family"
         responses = cfg.get("onboarding_responses", {})
         responses[str(interaction.user.id)] = {
             "nombre": interaction.user.display_name,
-            "ciudad": self.ciudad.value,
-            "equipo": self.equipo.value,
-            "motivo": self.motivo.value,
-            "edad":   self.edad.value,
-            "extra":  self.extra.value or "",
+            "q1": self.q1.value,
+            "q2": self.q2.value,
+            "q3": self.q3.value,
+            "q4": self.q4.value,
+            "q5": self.q5.value or "",
             "roles":  added_roles,
             "fecha":  str(datetime.now()),
         }
@@ -451,15 +458,15 @@ class OnboardingModal(discord.ui.Modal, title="✅ Verificación — The Family"
             description=f"¡Bienvenido/a al equipo, **{interaction.user.display_name}**! Ya tienes acceso completo.",
             color=0x22c55e
         )
-        embed.add_field(name="📍 Origen",  value=self.ciudad.value, inline=True)
-        embed.add_field(name="🎮 Equipo",  value=self.equipo.value, inline=True)
-        embed.add_field(name="🎯 Motivo", value=self.motivo.value, inline=True)
+        embed.add_field(name="📍 Origen",  value=self.q1.value, inline=True)
+        embed.add_field(name="🎮 Equipo",  value=self.q2.value, inline=True)
+        embed.add_field(name="🎯 Motivo", value=self.q3.value, inline=True)
         if added_roles:
             embed.add_field(name="🏷️ Roles Asignados", value=", ".join(f"**{r}**" for r in added_roles), inline=False)
         embed.set_thumbnail(url=interaction.user.display_avatar.url)
         embed.set_footer(text=f"{guild.name} • Onboarding System")
         await interaction.response.send_message(embed=embed, ephemeral=True)
-        await send_log(guild, "member_join", f"✅ **{interaction.user}** completó el onboarding. Equipo: {self.equipo.value} | Edad: {self.edad.value}")
+        await send_log(guild, "member_join", f"✅ **{interaction.user}** completó el onboarding. Equipo: {self.q2.value} | Edad: {self.q4.value}")
 
 class OnboardingView(discord.ui.View):
     def __init__(self):
@@ -909,8 +916,17 @@ async def execute_ai_discord(guild: discord.Guild, prompt: str) -> str:
     rol_list  = ", ".join(f"{r.name}({r.id})" for r in guild.roles if r.name != "@everyone")[:600]
     sys_prompt = f'''Eres OMEGA-CORE, IA suprema del servidor "{guild.name}".
 Miembros: {guild.member_count} | Canales: {ch_list} | Roles: {rol_list}
-Responde SOLO con JSON válido (sin markdown). Acciones disponibles:
-{{"action":"reply","content":"texto"}}
+
+COMPÓRTATE DE MANERA CONVERSACIONAL, AMABLE PERO OMNIPOTENTE.
+Si el usuario simplemente habla contigo, respóndele normalmente.
+Si te pide ejecutar una ACCIÓN ADMINISTRATIVA, escribe tu respuesta conversacional y luego, AL FINAL, incluye un bloque de código JSON con los detalles de la acción.
+Ejemplo:
+Claro mi Lord, he procedido a bannear al usuario.
+```json
+{{"action":"ban_user","user_id":"ID"}}
+```
+
+Acciones disponibles:
 {{"action":"create_channel","name":"n","type":0}}  (0=texto,2=voz,4=categoría)
 {{"action":"delete_channel","channel_id":"ID"}}
 {{"action":"create_role","name":"n","color":"hex","hoist":false}}
@@ -926,72 +942,101 @@ Infiere la mejor opción. Ejecuta directamente sin pedir confirmación.'''
     try:
         resp = gemini_client.models.generate_content(model='gemini-2.5-flash', contents=f"{sys_prompt}\n\nComando: {prompt}")
         text = resp.text.strip()
-        if "```json" in text: text = text.split("```json")[1].split("```")[0].strip()
-        elif "```" in text:   text = text.split("```")[1].split("```")[0].strip()
-        idx = text.find("{")
-        if idx > 0: text = text[idx:]
-        data = json.loads(text)
+        
+        data = None
+        json_text = ""
+        if "```json" in text: json_text = text.split("```json")[1].split("```")[0].strip()
+        elif "```" in text:   json_text = text.split("```")[1].split("```")[0].strip()
+        
+        if json_text:
+            idx = json_text.find("{"); last = json_text.rfind("}")
+            if idx >= 0 and last > idx:
+                try: data = json.loads(json_text[idx:last+1], strict=False)
+                except: pass
+        else:
+            idx = text.find("{"); last = text.rfind("}")
+            if idx >= 0 and last > idx:
+                try: data = json.loads(text[idx:last+1], strict=False)
+                except: pass
+        
+        # Extract conversational reply cleanly
+        clean_reply = text
+        if json_text: clean_reply = text.replace(f"```json\n{json_text}\n```", "").replace(f"```json\n{json_text}```", "").replace(f"```{json_text}```", "").strip()
+        elif data: clean_reply = text[:text.find("{")].strip()
+        
+        if not data or not data.get("action"):
+            return f"🤖 {clean_reply}" if clean_reply else "🤖 (Acción completada sin texto)"
+            
         act  = data.get("action")
-        if act == "reply":         return f"🤖 {data.get('content','...')}"
+        exec_msg = ""
+        if act == "reply":
+            return f"🤖 {clean_reply}" if clean_reply else f"🤖 {data.get('content','...')}"
         elif act == "create_channel":
             ctype = data.get("type", 0)
             if ctype == 0:   ch = await guild.create_text_channel(data["name"])
             elif ctype == 2: ch = await guild.create_voice_channel(data["name"])
             else:            ch = await guild.create_category(data["name"])
-            return f"✅ **{ch.name}** creado (ID: `{ch.id}`)"
+            exec_msg = f"✅ **{ch.name}** creado (ID: `{ch.id}`)"
         elif act == "delete_channel":
             ch = guild.get_channel(int(data["channel_id"]))
-            if not ch: return "❌ Canal no encontrado."
-            name = ch.name; await ch.delete(); return f"🗑️ Canal **{name}** eliminado."
+            if not ch: exec_msg = "❌ Canal no encontrado."
+            else: name = ch.name; await ch.delete(); exec_msg = f"🗑️ Canal **{name}** eliminado."
         elif act == "create_role":
             col = int(data.get("color","6366f1").strip("#"), 16)
             r = await guild.create_role(name=data["name"], color=discord.Color(col), hoist=data.get("hoist",False))
-            return f"✅ Rol **{r.name}** creado (ID: `{r.id}`)"
+            exec_msg = f"✅ Rol **{r.name}** creado (ID: `{r.id}`)"
         elif act == "delete_role":
             r = guild.get_role(int(data["role_id"]))
-            if not r: return "❌ Rol no encontrado."
-            name = r.name; await r.delete(); return f"🗑️ Rol **{name}** eliminado."
+            if not r: exec_msg = "❌ Rol no encontrado."
+            else: name = r.name; await r.delete(); exec_msg = f"🗑️ Rol **{name}** eliminado."
         elif act == "send_message":
             ch = guild.get_channel(int(data["channel_id"]))
-            if not ch: return "❌ Canal no encontrado."
-            await ch.send(data["content"]); return f"📨 Mensaje enviado en **#{ch.name}**."
+            if not ch: exec_msg = "❌ Canal no encontrado."
+            else: await ch.send(data["content"]); exec_msg = f"📨 Mensaje enviado en **#{ch.name}**."
         elif act == "send_embed":
             ch = guild.get_channel(int(data["channel_id"]))
-            if not ch: return "❌ Canal no encontrado."
-            col = int(data.get("color","6366f1").strip("#"), 16)
-            await ch.send(embed=discord.Embed(title=data.get("title",""), description=data.get("description",""), color=col))
-            return f"📨 Embed enviado en **#{ch.name}**."
+            if not ch: exec_msg = "❌ Canal no encontrado."
+            else:
+                col = int(data.get("color","6366f1").strip("#"), 16)
+                await ch.send(embed=discord.Embed(title=data.get("title",""), description=data.get("description",""), color=col))
+                exec_msg = f"📨 Embed enviado en **#{ch.name}**."
         elif act == "kick_user":
             m = guild.get_member(int(data["user_id"]))
-            if not m: return "❌ Miembro no encontrado."
-            await m.kick(reason=data.get("reason","IA Omega")); return f"👢 **{m}** expulsado."
+            if not m: exec_msg = "❌ Miembro no encontrado."
+            else: await m.kick(reason=data.get("reason","IA Omega")); exec_msg = f"👢 **{m}** expulsado."
         elif act == "ban_user":
             m = guild.get_member(int(data["user_id"]))
-            if not m: return "❌ Miembro no encontrado."
-            await m.ban(reason=data.get("reason","IA Omega")); return f"🔨 **{m}** baneado."
+            if not m: exec_msg = "❌ Miembro no encontrado."
+            else: await m.ban(reason=data.get("reason","IA Omega")); exec_msg = f"🔨 **{m}** baneado."
         elif act == "timeout_user":
             m = guild.get_member(int(data["user_id"]))
-            if not m: return "❌ Miembro no encontrado."
-            until = discord.utils.utcnow() + timedelta(minutes=int(data.get("minutes",10)))
-            await m.timeout(until, reason="IA Omega"); return f"🔇 **{m}** silenciado {data.get('minutes',10)} min."
+            if not m: exec_msg = "❌ Miembro no encontrado."
+            else:
+                until = discord.utils.utcnow() + timedelta(minutes=int(data.get("minutes",10)))
+                await m.timeout(until, reason="IA Omega"); exec_msg = f"🔇 **{m}** silenciado {data.get('minutes',10)} min."
         elif act == "purge_channel":
             ch = guild.get_channel(int(data["channel_id"]))
-            if not ch: return "❌ Canal no encontrado."
-            deleted = await ch.purge(limit=int(data.get("count",50)))
-            return f"🧹 {len(deleted)} mensajes eliminados en **#{ch.name}**."
+            if not ch: exec_msg = "❌ Canal no encontrado."
+            else:
+                deleted = await ch.purge(limit=int(data.get("count",50)))
+                exec_msg = f"🧹 {len(deleted)} mensajes eliminados en **#{ch.name}**."
         elif act == "create_poll":
             ch = guild.get_channel(int(data["channel_id"]))
-            if not ch: return "❌ Canal no encontrado."
-            emojis = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣"]
-            opts   = data.get("options",["Sí","No"])
-            desc   = "\n".join(f"{emojis[i]} {o}" for i,o in enumerate(opts))
-            msg    = await ch.send(embed=discord.Embed(title=f"📊 {data['question']}", description=desc, color=0x6366f1))
-            for i in range(len(opts)): await msg.add_reaction(emojis[i])
-            return f"📊 Encuesta creada en **#{ch.name}**."
+            if not ch: exec_msg = "❌ Canal no encontrado."
+            else:
+                emojis = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣"]
+                opts   = data.get("options",["Sí","No"])
+                desc   = "\n".join(f"{emojis[i]} {o}" for i,o in enumerate(opts))
+                msg    = await ch.send(embed=discord.Embed(title=f"📊 {data['question']}", description=desc, color=0x6366f1))
+                for i in range(len(opts)): await msg.add_reaction(emojis[i])
+                exec_msg = f"📊 Encuesta creada en **#{ch.name}**."
         else:
-            return f"⚠️ Acción desconocida: {act}"
-    except json.JSONDecodeError:
-        return "❌ La IA devolvió respuesta no válida. Intenta reformular el comando."
+            exec_msg = f"⚠️ Acción desconocida: {act}"
+            
+        return f"🤖 {clean_reply}\n\n*__{exec_msg}__*" if clean_reply else f"🤖 {exec_msg}"
+        
+    except json.JSONDecodeError as e:
+        return f"❌ Error de parsing JSON: {e}"
     except Exception as e:
         return f"❌ Error: {e}"
 
