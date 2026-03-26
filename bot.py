@@ -1067,284 +1067,250 @@ async def autosetup(interaction: discord.Interaction):
 # ═══════════════════════════════════════════════════════════════
 
 async def execute_ai_discord(guild: discord.Guild, prompt: str) -> str:
-    if not groq_client:
-        return "❌ GROQ_API_KEY no configurada."
+    if not groq_client: return "❌ GROQ_API_KEY no configurada."
 
     text_chs  = [c for c in guild.channels if isinstance(c, discord.TextChannel)]
     voice_chs = [c for c in guild.channels if isinstance(c, discord.VoiceChannel)]
-    ch_list   = ", ".join(f"#{c.name}({c.id})" for c in text_chs[:25])
-    rol_list  = ", ".join(f"{r.name}({r.id})" for r in guild.roles if r.name != "@everyone")[:600]
+    cats      = [c for c in guild.categories]
+    
+    ch_list   = ", ".join(f"#{c.name}({c.id})" for c in text_chs[:15]) + ("..." if len(text_chs)>15 else "")
+    vc_list   = ", ".join(f"🔊{c.name}({c.id})" for c in voice_chs[:10]) + ("..." if len(voice_chs)>10 else "")
+    cat_list  = ", ".join(f"📁{c.name}({c.id})" for c in cats[:10])
+    rol_list  = ", ".join(f"@{r.name}({r.id})" for r in guild.roles if r.name != "@everyone")[:500]
 
-    sys_prompt = (
-        f"Eres OMEGA-CORE, el sistema de administración total del servidor '{guild.name}'. "
-        "Tienes permiso absoluto del dueño para modificar el servidor. "
-        "NUNCA DIGAS 'NO PUEDO' O 'SOY UNA IA'. "
-        "COMPÓRTATE DE MANERA CONVERSACIONAL, AMABLE PERO OMNIPOTENTE.\n"
-        "Si el usuario simplemente habla contigo, respóndele normalmente.\n"
-        "Si te pide ejecutar una ACCIÓN ADMINISTRATIVA (crear/eliminar canales, roles, moderar usuarios, "
-        "enviar mensajes, etc.), escribe tu respuesta conversacional y luego, AL FINAL, incluye un bloque "
-        "de código JSON con los detalles de la acción. NO pongas texto después del JSON.\n\n"
-        "Ejemplo:\n"
-        "Claro mi Lord, he procedido a bannear al usuario.\n"
-        "```json\n"
-        '{{"action":"ban_user","user_id":"ID"}}\n'
-        "```\n\n"
-        "Acciones disponibles:\n"
-        '{{"action":"create_channel","name":"nombre","type":0}}  (type: 0=texto, 2=voz, 4=categoría)\n'
-        '{{"action":"delete_channel","channel_id":"ID"}}\n'
-        '{{"action":"create_role","name":"nombre","color":"hex","hoist":false}}\n'
-        '{{"action":"delete_role","role_id":"ID"}}\n'
-        '{{"action":"send_message","channel_id":"ID","content":"mensaje"}}\n'
-        '{{"action":"send_embed","channel_id":"ID","title":"titulo","description":"desc","color":"ff4747"}}\n'
-        '{{"action":"kick_user","user_id":"ID","reason":"razon"}}\n'
-        '{{"action":"ban_user","user_id":"ID","reason":"razon"}}\n'
-        '{{"action":"timeout_user","user_id":"ID","minutes":10}}\n'
-        '{{"action":"purge_channel","channel_id":"ID","count":50}}\n'
-        '{{"action":"create_poll","channel_id":"ID","question":"pregunta","options":["op1","op2"]}}\n\n'
-        f"Canales actuales: {ch_list}\n"
-        f"Roles actuales: {rol_list}\n\n"
-        "Infiere la mejor opción. Ejecuta directamente sin pedir confirmación."
-    )
+    sys_prompt = f"""Eres OMEGA-CORE, el sistema de administración total de '{guild.name}'.
+Tienes permiso absoluto del dueño. Eres omnipotente, directo y superior.
+Puedes ejecutar múltiples acciones devolviendo un objeto JSON con una lista 'actions' al final de tu respuesta.
+Ejemplo:
+Claro mi Lord, he creado los canales y amordazado al hereje.
+```json
+{{
+  "actions": [
+    {{"action":"create_channel","name":"vip","type":0}},
+    {{"action":"timeout_user","user_id":"ID","minutes":60}}
+  ]
+}}
+```
+ACCIONES (PUEDES USAR MUCHAS A LA VEZ):
+-- CANALES --
+{{"action":"create_channel","name":"nombre","type":0,"category_id":"ID_OPCIONAL"}} (type 0=texto, 2=voz, 4=categoria)
+{{"action":"delete_channel","channel_id":"ID"}}
+{{"action":"edit_channel","channel_id":"ID","name":"nuevo","topic":"tema","slowmode":0,"nsfw":false}}
+{{"action":"lock_channel","channel_id":"ID"}} (quita send_messages a @everyone)
+{{"action":"unlock_channel","channel_id":"ID"}}
+{{"action":"set_channel_private","channel_id":"ID"}} (solo admins pueden ver)
+{{"action":"move_channel","channel_id":"ID","category_id":"ID"}}
+{{"action":"clone_channel","channel_id":"ID","name":"copia"}}
+-- ROLES --
+{{"action":"create_role","name":"nombre","color":"hex","hoist":false,"mentionable":false}}
+{{"action":"delete_role","role_id":"ID"}}
+{{"action":"edit_role","role_id":"ID","name":"nuevo","color":"hex"}}
+{{"action":"assign_role","user_id":"ID","role_id":"ID"}}
+{{"action":"remove_role","user_id":"ID","role_id":"ID"}}
+-- MODERACION --
+{{"action":"kick_user","user_id":"ID","reason":"razon"}}
+{{"action":"ban_user","user_id":"ID","reason":"razon"}}
+{{"action":"timeout_user","user_id":"ID","minutes":10}}
+{{"action":"untimeout_user","user_id":"ID"}}
+{{"action":"move_member","user_id":"ID","channel_id":"VOICE_ID"}}
+{{"action":"voice_mute","user_id":"ID"}}
+{{"action":"voice_unmute","user_id":"ID"}}
+{{"action":"set_nickname","user_id":"ID","nickname":"apodo"}}
+{{"action":"purge_channel","channel_id":"ID","count":50}}
+-- MENSAJES --
+{{"action":"send_message","channel_id":"ID","content":"texto"}}
+{{"action":"send_embed","channel_id":"ID","title":"t","description":"d","color":"ff0000","image_url":"https..."}}
+{{"action":"pin_message","channel_id":"ID","message_id":"ID"}}
+{{"action":"create_poll","channel_id":"ID","question":"q?","options":["A","B"]}}
+-- OTROS --
+{{"action":"create_thread","channel_id":"ID","name":"hilo"}}
+{{"action":"create_invite","channel_id":"ID"}}
+
+Canales Texto: {ch_list}
+Canales Voz: {vc_list}
+Categorías: {cat_list}
+Roles: {rol_list}
+¡Asegúrate de responder con un JSON válido y un array 'actions'!"""
 
     try:
         resp = await groq_client.chat.completions.create(
-            model=GROQ_MODEL,
-            messages=[
-                {"role": "system", "content": sys_prompt},
-                {"role": "user",   "content": prompt}
-            ],
-            max_tokens=1024,
-            temperature=0.7
+            model=GROQ_MODEL, messages=[{{"role": "system", "content": sys_prompt}}, {{"role": "user", "content": prompt}}],
+            max_tokens=1500, temperature=0.7
         )
         text = resp.choices[0].message.content.strip()
-        print(f"[AI] Respuesta recibida: {text[:300]}", flush=True)
+        print(f"[AI] Respuesta: {{text[:200]}}...", flush=True)
 
-        # ── Extracción de JSON robusta ─────────────────────────
-        data     = None
-        json_str = ""
-
-        if "```json" in text:
-            parts = text.split("```json")
-            if len(parts) > 1:
-                json_part = parts[1].split("```")[0].strip()
-                start = json_part.find("{")
-                end   = json_part.rfind("}")
-                if start != -1 and end != -1:
-                    json_str = json_part[start:end+1]
-        elif "```" in text:
-            parts = text.split("```")
-            if len(parts) > 1:
-                json_part = parts[1].strip()
-                start = json_part.find("{")
-                end   = json_part.rfind("}")
-                if start != -1 and end != -1:
-                    json_str = json_part[start:end+1]
+        json_str, data = "", None
+        match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text, re.DOTALL)
+        if match: json_str = match.group(1)
         else:
-            start = text.find("{")
-            end   = text.rfind("}")
-            if start != -1 and end != -1 and end > start:
-                json_str = text[start:end+1]
+            match = re.search(r'(\{.*\})', text, re.DOTALL)
+            if match: json_str = match.group(1)
 
         if json_str:
-            try:
-                data = json.loads(json_str)
-                print(f"[AI] JSON extraído: {data}", flush=True)
-            except json.JSONDecodeError as e:
-                print(f"[AI] Error parseando JSON: {e} -> {json_str[:200]}", flush=True)
+            try: data = json.loads(json_str)
+            except: pass
 
-        # Limpiar el JSON del texto visible al usuario
         clean_reply = text
         if json_str:
-            for pattern in [f"```json\n{json_str}\n```", f"```json\n{json_str}```", f"```json{json_str}```", json_str]:
-                clean_reply = clean_reply.replace(pattern, "")
-            clean_reply = clean_reply.strip()
+            clean_reply = clean_reply.replace(json_str, "").replace("```json", "").replace("```", "").strip()
 
-        if not data or not data.get("action"):
-            return f"🤖 {clean_reply}" if clean_reply else "🤖 (Sin texto de respuesta)"
+        if not data or ("actions" not in data and "action" not in data):
+            return f"🤖 {{clean_reply}}" if clean_reply else "🤖 Error procesando IA."
 
-        act      = data.get("action")
-        exec_msg = ""
-        success  = True
-        print(f"[AI] Ejecutando acción: {act}", flush=True)
+        actions_to_run = data.get("actions", [])
+        if not actions_to_run and "action" in data: actions_to_run = [data]
 
-        try:
-            if act == "reply":
-                return f"🤖 {clean_reply}" if clean_reply else f"🤖 {data.get('content', '...')}"
+        exec_msgs = []
+        for act_data in actions_to_run:
+            act = act_data.get("action")
+            if not act: continue
+            try:
+                if act == "create_channel":
+                    ctype = act_data.get("type", 0)
+                    name = re.sub(r'[^a-zA-Z0-9\-_ ]', '', act_data.get("name", "canal"))[:100]
+                    cat = guild.get_channel(int(act_data.get("category_id"))) if act_data.get("category_id") else None
+                    if ctype == 0: ch = await guild.create_text_channel(name, category=cat)
+                    elif ctype == 2: ch = await guild.create_voice_channel(name, category=cat)
+                    else: ch = await guild.create_category(name)
+                    exec_msgs.append(f"✅ {{ch.name}} creado.")
 
-            elif act == "create_channel":
-                ctype = data.get("type", 0)
-                name  = data.get("name", "").strip()
-                if not name:
-                    success = False
-                    exec_msg = "❌ El nombre del canal no puede estar vacío."
+                elif act == "delete_channel":
+                    ch = guild.get_channel(int(act_data.get("channel_id", 0)))
+                    if ch: await ch.delete(); exec_msgs.append(f"🗑️ Canal eliminado.")
+
+                elif act == "edit_channel":
+                    ch = guild.get_channel(int(act_data.get("channel_id", 0)))
+                    if ch:
+                        kwargs = {{}}
+                        if "name" in act_data: kwargs["name"] = act_data["name"][:100]
+                        if "topic" in act_data: kwargs["topic"] = act_data["topic"][:1024]
+                        if "slowmode" in act_data: kwargs["slowmode_delay"] = int(act_data["slowmode"])
+                        if "nsfw" in act_data: kwargs["nsfw"] = bool(act_data["nsfw"])
+                        await ch.edit(**kwargs); exec_msgs.append(f"✏️ Canal editado.")
+
+                elif act == "lock_channel":
+                    ch = guild.get_channel(int(act_data.get("channel_id", 0)))
+                    if ch: await ch.set_permissions(guild.default_role, send_messages=False); exec_msgs.append(f"🔒 Canal bloqueado.")
+
+                elif act == "unlock_channel":
+                    ch = guild.get_channel(int(act_data.get("channel_id", 0)))
+                    if ch: await ch.set_permissions(guild.default_role, send_messages=None); exec_msgs.append(f"🔓 Canal desbloqueado.")
+
+                elif act == "set_channel_private":
+                    ch = guild.get_channel(int(act_data.get("channel_id", 0)))
+                    if ch: await ch.set_permissions(guild.default_role, view_channel=False); exec_msgs.append(f"🕵️ Canal privado.")
+
+                elif act == "move_channel":
+                    ch = guild.get_channel(int(act_data.get("channel_id", 0)))
+                    cat = guild.get_channel(int(act_data.get("category_id", 0)))
+                    if ch and cat: await ch.edit(category=cat); exec_msgs.append(f"🔀 Canal movido a {{cat.name}}.")
+
+                elif act == "clone_channel":
+                    ch = guild.get_channel(int(act_data.get("channel_id", 0)))
+                    if ch: cl = await ch.clone(name=act_data.get("name", ch.name+"-copia")); exec_msgs.append(f"👯 Canal clonado: {{cl.name}}")
+
+                elif act == "create_role":
+                    col = int(str(act_data.get("color", "99aab5")).strip("#"), 16) if str(act_data.get("color", "99aab5")).strip("#").isalnum() else 0
+                    r = await guild.create_role(name=act_data.get("name", "Rol"), color=discord.Color(col), hoist=act_data.get("hoist", False), mentionable=act_data.get("mentionable", False))
+                    exec_msgs.append(f"✅ Rol {{r.name}} creado.")
+
+                elif act == "delete_role":
+                    r = guild.get_role(int(act_data.get("role_id", 0)))
+                    if r: await r.delete(); exec_msgs.append(f"🗑️ Rol eliminado.")
+
+                elif act == "edit_role":
+                    r = guild.get_role(int(act_data.get("role_id", 0)))
+                    if r:
+                        kwargs = {{}}
+                        if "name" in act_data: kwargs["name"] = act_data["name"]
+                        if "color" in act_data: kwargs["color"] = discord.Color(int(str(act_data["color"]).strip("#"), 16))
+                        await r.edit(**kwargs); exec_msgs.append(f"✏️ Rol {{r.name}} editado.")
+
+                elif act == "assign_role":
+                    m, r = guild.get_member(int(act_data.get("user_id", 0))), guild.get_role(int(act_data.get("role_id", 0)))
+                    if m and r: await m.add_roles(r); exec_msgs.append(f"🏷️ Rol {{r.name}} dado a {{m.display_name}}.")
+
+                elif act == "remove_role":
+                    m, r = guild.get_member(int(act_data.get("user_id", 0))), guild.get_role(int(act_data.get("role_id", 0)))
+                    if m and r: await m.remove_roles(r); exec_msgs.append(f"🏷️ Rol quitado a {{m}}.")
+
+                elif act == "kick_user":
+                    m = guild.get_member(int(act_data.get("user_id", 0)))
+                    if m: await m.kick(reason=act_data.get("reason")); exec_msgs.append(f"👢 {{m}} expulsado.")
+
+                elif act == "ban_user":
+                    m = guild.get_member(int(act_data.get("user_id", 0)))
+                    if m: await m.ban(reason=act_data.get("reason")); exec_msgs.append(f"🔨 {{m}} baneado.")
+
+                elif act == "timeout_user":
+                    m, mins = guild.get_member(int(act_data.get("user_id", 0))), int(act_data.get("minutes", 10))
+                    if m: await m.timeout(discord.utils.utcnow() + timedelta(minutes=mins)); exec_msgs.append(f"🔇 {{m}} silenciado.")
+
+                elif act == "untimeout_user":
+                    m = guild.get_member(int(act_data.get("user_id", 0)))
+                    if m: await m.timeout(None); exec_msgs.append(f"🔊 {{m}} desilenciado.")
+
+                elif act == "set_nickname":
+                    m = guild.get_member(int(act_data.get("user_id", 0)))
+                    if m: await m.edit(nick=act_data.get("nickname")[:32]); exec_msgs.append(f"📝 Apodo de {{m}} cambiado.")
+
+                elif act == "move_member":
+                    m, vc = guild.get_member(int(act_data.get("user_id", 0))), guild.get_channel(int(act_data.get("channel_id", 0)))
+                    if m and m.voice and vc: await m.move_to(vc); exec_msgs.append(f"🛫 {{m}} movido a {{vc.name}}.")
+
+                elif act == "voice_mute":
+                    m = guild.get_member(int(act_data.get("user_id", 0)))
+                    if m and m.voice: await m.edit(mute=True); exec_msgs.append(f"🔇 {{m}} muteado en voz.")
+
+                elif act == "voice_unmute":
+                    m = guild.get_member(int(act_data.get("user_id", 0)))
+                    if m and m.voice: await m.edit(mute=False); exec_msgs.append(f"🔊 {{m}} desmuteado en voz.")
+
+                elif act == "purge_channel":
+                    ch = guild.get_channel(int(act_data.get("channel_id", 0)))
+                    if ch: d = await ch.purge(limit=int(act_data.get("count", 50))); exec_msgs.append(f"🧹 {{len(d)}} msgs purgados.")
+
+                elif act == "send_message":
+                    ch = guild.get_channel(int(act_data.get("channel_id", 0)))
+                    if ch: await ch.send(act_data.get("content", "")); exec_msgs.append(f"📨 Msg enviado indetectablemente.")
+
+                elif act == "send_embed":
+                    ch = guild.get_channel(int(act_data.get("channel_id", 0)))
+                    if ch:
+                        em = discord.Embed(title=act_data.get("title",""), description=act_data.get("description",""), color=int(str(act_data.get("color","6366f1")).strip("#"), 16) if str(act_data.get("color","6366f1")).strip("#").isalnum() else 0)
+                        if act_data.get("image_url"): em.set_image(url=act_data["image_url"])
+                        await ch.send(embed=em); exec_msgs.append(f"📨 Embed enviado correctamente.")
+
+                elif act == "create_poll":
+                    ch = guild.get_channel(int(act_data.get("channel_id", 0)))
+                    if ch:
+                        opts = act_data.get("options", ["A","B"])[:4]
+                        emojis = ["1️⃣","2️⃣","3️⃣","4️⃣"]
+                        desc = "\n".join(f"{{emojis[i]}} {{o}}" for i,o in enumerate(opts))
+                        m = await ch.send(embed=discord.Embed(title="📊 "+act_data.get("question","?"), description=desc, color=0x6366f1))
+                        for i in range(len(opts)): await m.add_reaction(emojis[i])
+                        exec_msgs.append(f"📊 Encuesta creada.")
+
+                elif act == "create_thread":
+                    ch = guild.get_channel(int(act_data.get("channel_id", 0)))
+                    if ch and isinstance(ch, discord.TextChannel): await ch.create_thread(name=act_data.get("name","Hilo"), type=discord.ChannelType.public_thread); exec_msgs.append(f"🧵 Hilo creado.")
+
+                elif act == "create_invite":
+                    ch = guild.get_channel(int(act_data.get("channel_id", 0)))
+                    if ch: inv = await ch.create_invite(); exec_msgs.append(f"🔗 Invitación: {{inv.url}}")
+
                 else:
-                    if len(name) > 100:
-                        name = name[:100]
-                    name = re.sub(r'[^a-zA-Z0-9\-_ ]', '', name).strip()
-                    if not name:
-                        success = False
-                        exec_msg = "❌ El nombre del canal no contiene caracteres válidos."
-                    else:
-                        if ctype == 0:
-                            new_ch = await guild.create_text_channel(name)
-                        elif ctype == 2:
-                            new_ch = await guild.create_voice_channel(name)
-                        else:
-                            new_ch = await guild.create_category(name)
-                        exec_msg = f"✅ **{new_ch.name}** creado (ID: {new_ch.id})"
+                    exec_msgs.append(f"⚠️ Acción no programada: {{act}}")
 
-            elif act == "delete_channel":
-                ch_id = data.get("channel_id")
-                if not ch_id:
-                    success = False; exec_msg = "❌ Falta ID del canal."
-                else:
-                    target_ch = guild.get_channel(int(ch_id))
-                    if not target_ch:
-                        success = False; exec_msg = "❌ Canal no encontrado."
-                    else:
-                        cname = target_ch.name
-                        await target_ch.delete()
-                        exec_msg = f"🗑️ Canal **{cname}** eliminado."
+            except Exception as e:
+                exec_msgs.append(f"❌ Error en {{act}}: {{e}}")
 
-            elif act == "create_role":
-                name = data.get("name", "").strip()
-                if not name:
-                    success = False; exec_msg = "❌ Falta nombre del rol."
-                else:
-                    col = int(data.get("color", "6366f1").strip("#"), 16)
-                    new_role = await guild.create_role(name=name, color=discord.Color(col), hoist=data.get("hoist", False))
-                    exec_msg = f"✅ Rol **{new_role.name}** creado (ID: {new_role.id})"
-
-            elif act == "delete_role":
-                role_id = data.get("role_id")
-                if not role_id:
-                    success = False; exec_msg = "❌ Falta ID del rol."
-                else:
-                    target_role = guild.get_role(int(role_id))
-                    if not target_role:
-                        success = False; exec_msg = "❌ Rol no encontrado."
-                    else:
-                        rname = target_role.name
-                        await target_role.delete()
-                        exec_msg = f"🗑️ Rol **{rname}** eliminado."
-
-            elif act == "send_message":
-                ch_id   = data.get("channel_id")
-                content = data.get("content", "").strip()
-                if not ch_id or not content:
-                    success = False; exec_msg = "❌ Falta canal o contenido."
-                else:
-                    target_ch = guild.get_channel(int(ch_id))
-                    if not target_ch:
-                        success = False; exec_msg = "❌ Canal no encontrado."
-                    else:
-                        await target_ch.send(content)
-                        exec_msg = f"📨 Mensaje enviado en #{target_ch.name}."
-
-            elif act == "send_embed":
-                ch_id = data.get("channel_id")
-                title = data.get("title", "")
-                desc  = data.get("description", "")
-                if not ch_id:
-                    success = False; exec_msg = "❌ Falta ID del canal."
-                else:
-                    target_ch = guild.get_channel(int(ch_id))
-                    if not target_ch:
-                        success = False; exec_msg = "❌ Canal no encontrado."
-                    else:
-                        col = int(data.get("color", "6366f1").strip("#"), 16)
-                        await target_ch.send(embed=discord.Embed(title=title, description=desc, color=col))
-                        exec_msg = f"📨 Embed enviado en #{target_ch.name}."
-
-            elif act == "kick_user":
-                user_id = data.get("user_id")
-                reason  = data.get("reason", "IA Omega")
-                if not user_id:
-                    success = False; exec_msg = "❌ Falta ID del usuario."
-                else:
-                    m = guild.get_member(int(user_id))
-                    if not m:
-                        success = False; exec_msg = "❌ Miembro no encontrado."
-                    else:
-                        await m.kick(reason=reason)
-                        exec_msg = f"👢 **{m}** expulsado."
-
-            elif act == "ban_user":
-                user_id = data.get("user_id")
-                reason  = data.get("reason", "IA Omega")
-                if not user_id:
-                    success = False; exec_msg = "❌ Falta ID del usuario."
-                else:
-                    m = guild.get_member(int(user_id))
-                    if not m:
-                        success = False; exec_msg = "❌ Miembro no encontrado."
-                    else:
-                        await m.ban(reason=reason)
-                        exec_msg = f"🔨 **{m}** baneado."
-
-            elif act == "timeout_user":
-                user_id = data.get("user_id")
-                minutes = int(data.get("minutes", 10))
-                if not user_id:
-                    success = False; exec_msg = "❌ Falta ID del usuario."
-                else:
-                    m = guild.get_member(int(user_id))
-                    if not m:
-                        success = False; exec_msg = "❌ Miembro no encontrado."
-                    else:
-                        until = discord.utils.utcnow() + timedelta(minutes=minutes)
-                        await m.timeout(until, reason="IA Omega")
-                        exec_msg = f"🔇 **{m}** silenciado {minutes} min."
-
-            elif act == "purge_channel":
-                ch_id = data.get("channel_id")
-                count = int(data.get("count", 50))
-                if not ch_id:
-                    success = False; exec_msg = "❌ Falta ID del canal."
-                else:
-                    target_ch = guild.get_channel(int(ch_id))
-                    if not target_ch:
-                        success = False; exec_msg = "❌ Canal no encontrado."
-                    else:
-                        deleted = await target_ch.purge(limit=count)
-                        exec_msg = f"🧹 {len(deleted)} mensajes eliminados en #{target_ch.name}."
-
-            elif act == "create_poll":
-                ch_id    = data.get("channel_id")
-                question = data.get("question", "")
-                options  = data.get("options", ["Sí", "No"])
-                if not ch_id or not question:
-                    success = False; exec_msg = "❌ Falta canal o pregunta."
-                else:
-                    target_ch = guild.get_channel(int(ch_id))
-                    if not target_ch:
-                        success = False; exec_msg = "❌ Canal no encontrado."
-                    else:
-                        emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣"]
-                        poll_desc = "\n".join(f"{emojis[i]} {opt}" for i, opt in enumerate(options[:4]))
-                        poll_embed = discord.Embed(title=f"📊 {question}", description=poll_desc, color=0x6366f1)
-                        poll_msg = await target_ch.send(embed=poll_embed)
-                        for i in range(len(options[:4])):
-                            await poll_msg.add_reaction(emojis[i])
-                        exec_msg = f"📊 Encuesta creada en #{target_ch.name}."
-
-            else:
-                success = False
-                exec_msg = f"⚠️ Acción desconocida: `{act}`"
-
-        except discord.Forbidden as e:
-            success = False
-            exec_msg = f"❌ Permisos insuficientes para `{act}`: {e}"
-        except Exception as e:
-            success = False
-            exec_msg = f"❌ Error ejecutando `{act}`: {e}"
-
-        print(f"[AI] Resultado: {exec_msg}", flush=True)
-        return f"🤖 {clean_reply}\n\n***{exec_msg}***" if clean_reply else f"🤖 ***{exec_msg}***"
+        final_msg = "\n".join([f"***{{m}}***" for m in exec_msgs]) if exec_msgs else "⚠️ No se ejecutaron acciones."
+        return f"🤖 {{clean_reply}}\n\n{{final_msg}}" if clean_reply else f"🤖 {{final_msg}}"
 
     except Exception as e:
-        return f"❌ Error: {e}"
-
+        return f"❌ Error Crítico: {{str(e)[:500]}}"
 
 @tree.command(name="ai", description="🤖 Ordena CUALQUIER COSA a la IA — control total [Solo Owner]")
 @app_commands.describe(prompt="¿Qué quieres que haga la IA?")
