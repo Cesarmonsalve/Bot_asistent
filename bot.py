@@ -3,15 +3,18 @@ from discord.ext import commands, tasks
 from discord import app_commands
 import json, os, asyncio, aiohttp, re, random
 from datetime import datetime, timedelta, timezone
-from google import genai
+from groq import Groq
 
 TOKEN    = (os.environ.get("BOT_TOKEN") or "").strip()
 GUILD_ID = int((os.environ.get("GUILD_ID") or "0").strip())
-GEMINI_KEY = (os.environ.get("GEMINI_API_KEY") or "").strip()
+GROQ_KEY = (os.environ.get("GROQ_API_KEY") or "").strip()
 
-gemini_client = None
-if GEMINI_KEY:
-    gemini_client = genai.Client(api_key=GEMINI_KEY)
+gemini_client = None  # kept as alias for compatibility
+groq_client   = None
+GROQ_MODEL    = "llama-3.3-70b-versatile"
+if GROQ_KEY:
+    groq_client   = Groq(api_key=GROQ_KEY)
+    gemini_client = groq_client  # so existing checks still work
 
 # ── CONFIG ────────────────────────────────────────────────────
 def load_config():
@@ -64,14 +67,15 @@ async def on_member_join(member):
             ch = member.guild.get_channel(int(w["channel_id"]))
             if ch:
                 ai_msg = ""
-                if gemini_client:
+                if groq_client:
                     try:
                         prompt = f"El usuario '{member.display_name}' acaba de unirse al servidor de Discord '{member.guild.name}'. El servidor tiene {member.guild.member_count} miembros. Escribe un mensaje de bienvenida corto (1 o 2 oraciones), gamer, épico, amigable y muy moderno para él. No uses emojis exagerados pero sé cálido. Usa tú (no usted)."
-                        resp = gemini_client.models.generate_content(
-                            model='gemini-2.5-flash',
-                            contents=prompt
+                        resp = groq_client.chat.completions.create(
+                            model=GROQ_MODEL,
+                            messages=[{"role": "user", "content": prompt}],
+                            max_tokens=150
                         )
-                        ai_msg = resp.text.strip()
+                        ai_msg = resp.choices[0].message.content.strip()
                     except Exception as e:
                         print(f"Gemini API error (fallback to default msg): {e}")
                 
@@ -1032,8 +1036,16 @@ Acciones disponibles:
 {{"action":"create_poll","channel_id":"ID","question":"q","options":["o1","o2"]}}
 Infiere la mejor opción. Ejecuta directamente sin pedir confirmación.'''
     try:
-        resp = gemini_client.models.generate_content(model='gemini-2.5-flash', contents=f"{sys_prompt}\n\nComando: {prompt}")
-        text = resp.text.strip()
+        resp = groq_client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[
+                {"role": "system", "content": sys_prompt},
+                {"role": "user",   "content": prompt}
+            ],
+            max_tokens=1024,
+            temperature=0.7
+        )
+        text = resp.choices[0].message.content.strip()
         
         data = None
         json_text = ""
@@ -1151,13 +1163,17 @@ async def ai_analyze(interaction: discord.Interaction):
     await interaction.response.defer(thinking=True)
     msgs = [m async for m in interaction.channel.history(limit=50)]
     history_txt = "\n".join(f"{m.author.display_name}: {m.content[:100]}" for m in reversed(msgs) if not m.author.bot and m.content)[:2000]
-    if gemini_client and history_txt:
+    if groq_client and history_txt:
         try:
-            resp = gemini_client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=f"Analiza esta conversación de Discord (canal #{interaction.channel.name}) y da: 1) Resumen de temas, 2) Tono general, 3) Usuarios más activos, 4) Alertas o problemas, 5) Sugerencias. Sé conciso.\n\n{history_txt}"
+            resp = groq_client.chat.completions.create(
+                model=GROQ_MODEL,
+                messages=[{
+                    "role": "user",
+                    "content": f"Analiza esta conversación de Discord (canal #{interaction.channel.name}) y da: 1) Resumen de temas, 2) Tono general, 3) Usuarios más activos, 4) Alertas o problemas, 5) Sugerencias. Sé conciso.\n\n{history_txt}"
+                }],
+                max_tokens=800
             )
-            analysis = resp.text.strip()
+            analysis = resp.choices[0].message.content.strip()
         except Exception as e: analysis = f"Error IA: {e}"
     else: analysis = "No hay mensajes o GEMINI_API_KEY no configurada."
     embed = discord.Embed(title=f"🔍 Análisis de #{interaction.channel.name}", description=analysis[:4000], color=0x6366f1)

@@ -1,6 +1,6 @@
 from flask import Flask, render_template_string, request, jsonify, redirect, session
 import json, os, re, requests as req_lib
-from google import genai
+from groq import Groq
 
 # ══════════════════════════════════════════════════════════════
 #  FLASK BACKEND
@@ -11,11 +11,13 @@ app.secret_key = os.environ.get("PANEL_SECRET", "thefamily2024secret")
 BOT_TOKEN      = (os.environ.get("BOT_TOKEN") or "").strip()
 GUILD_ID       = (os.environ.get("GUILD_ID") or "0").strip()
 PANEL_PASSWORD = (os.environ.get("PANEL_PASSWORD") or "cesar2024").strip()
-GEMINI_KEY     = (os.environ.get("GEMINI_API_KEY") or "").strip()
+GROQ_KEY       = (os.environ.get("GROQ_API_KEY") or "").strip()
 
-gemini_client = None
-if GEMINI_KEY:
-    gemini_client = genai.Client(api_key=GEMINI_KEY)
+groq_client = None
+if GROQ_KEY:
+    groq_client = Groq(api_key=GROQ_KEY)
+
+GROQ_MODEL = "llama-3.3-70b-versatile"
 
 DISCORD = "https://discord.com/api/v10"
 HEADERS = lambda: {"Authorization": f"Bot {BOT_TOKEN}", "Content-Type": "application/json"}
@@ -467,7 +469,7 @@ def api_autoconfig():
 def api_ai_console():
     prompt = request.json.get("prompt", "")
     if not prompt: return jsonify({"ok": False, "error": "No prompt provided"})
-    if not GEMINI_KEY: return jsonify({"ok": False, "error": "GEMINI_API_KEY no configurada."})
+    if not groq_client: return jsonify({"ok": False, "error": "GROQ_API_KEY no configurada. Obtén una gratis en console.groq.com"})
 
     try:
         # 1. Fetch live context
@@ -493,11 +495,16 @@ Acciones: create_channel, delete_channel, modify_channel, create_poll, update_co
 '''
         
         # 2. Generate content
-        resp = gemini_client.models.generate_content(
-            model='gemini-2.0-flash',
-            contents=f"{sys_prompt}\n\nOrden del Comandante: {prompt}"
+        resp = groq_client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[
+                {"role": "system", "content": sys_prompt},
+                {"role": "user",   "content": prompt}
+            ],
+            max_tokens=1024,
+            temperature=0.7
         )
-        text = resp.text.strip()
+        text = resp.choices[0].message.content.strip()
         
         # 3. Robust Extraction
         data = None
@@ -619,7 +626,10 @@ Acciones: create_channel, delete_channel, modify_channel, create_poll, update_co
         return jsonify({"ok": success, "type": "success", "msg": combined})
 
     except Exception as e:
-        return jsonify({"ok": False, "error": f"OMEGA-CORE Critical Error: {str(e)}"})
+        err = str(e)
+        if "429" in err or "rate_limit" in err.lower() or "quota" in err.lower():
+            return jsonify({"ok": False, "error": "⚠️ Límite de velocidad de Groq alcanzado. Espera 30 segundos e intenta de nuevo. (30 req/min gratis)"})
+        return jsonify({"ok": False, "error": f"OMEGA-CORE Error: {err[:300]}"})
 
 # ── ONBOARDING CONFIG ─────────────────────────────────────
 
