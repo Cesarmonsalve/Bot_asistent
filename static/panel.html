@@ -991,12 +991,17 @@
         <div style="margin-top:12px;"><label style="color:var(--text-muted);font-size:12px;">Palabras baneadas (separadas por coma)</label><input type="text" id="s-wf-words" placeholder="spam, insulto, ..." style="width:100%;background:var(--bg);border:1px solid var(--border);padding:9px;border-radius:8px;color:white;margin-top:5px;"></div>
       </div>
 
-      <!-- Stream Alert -->
+      <!-- Redes Sociales y Alertas -->
       <div style="background:var(--surface);border-radius:var(--radius-lg);padding:20px;border:1px solid var(--border);">
-        <div style="font-weight:700;margin-bottom:14px;color:#3b82f6;">🎮 Stream Alert (Kick)</div>
+        <div style="font-weight:700;margin-bottom:14px;color:#ec4899;">📱 Redes Sociales & Alertas</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:14px;">Aquí configurarás a futuro los nombres de usuario para automatizar avisos de stream y vídeos.</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-          <div><label style="color:var(--text-muted);font-size:12px;">Canal alertas (ID)</label><input type="text" id="s-st-ch" placeholder="ID" style="width:100%;background:var(--bg);border:1px solid var(--border);padding:9px;border-radius:8px;color:white;margin-top:5px;"></div>
-          <div><label style="color:var(--text-muted);font-size:12px;">Usuario Kick.com</label><input type="text" id="s-st-user" placeholder="mi_usuario" style="width:100%;background:var(--bg);border:1px solid var(--border);padding:9px;border-radius:8px;color:white;margin-top:5px;"></div>
+          <div><label style="color:var(--text-muted);font-size:12px;">Canal notificaciones (ID)</label><input type="text" id="s-soc-ch" placeholder="ID del canal de avisos" style="width:100%;background:var(--bg);border:1px solid var(--border);padding:9px;border-radius:8px;color:white;margin-top:5px;"></div>
+          <div style="display:flex;align-items:flex-end;gap:10px;"><label style="color:var(--text-muted);font-size:12px;display:flex;align-items:center;gap:8px;"><input type="checkbox" id="s-soc-enabled" style="accent-color:var(--accent);"> Activar Alertas</label></div>
+          <div><label style="color:var(--text-muted);font-size:12px;">Usuario Kick.com</label><input type="text" id="s-soc-kick" placeholder="Ej: mi_usuario" style="width:100%;background:var(--bg);border:1px solid var(--border);padding:9px;border-radius:8px;color:white;margin-top:5px;"></div>
+          <div><label style="color:var(--text-muted);font-size:12px;">Usuario TikTok</label><input type="text" id="s-soc-tiktok" placeholder="Ej: @mi_usuario" style="width:100%;background:var(--bg);border:1px solid var(--border);padding:9px;border-radius:8px;color:white;margin-top:5px;"></div>
+          <div><label style="color:var(--text-muted);font-size:12px;">Canal YouTube (@handle)</label><input type="text" id="s-soc-yt" placeholder="Ej: @ElCanal" style="width:100%;background:var(--bg);border:1px solid var(--border);padding:9px;border-radius:8px;color:white;margin-top:5px;"></div>
+          <div><label style="color:var(--text-muted);font-size:12px;">Usuario Twitch</label><input type="text" id="s-soc-twitch" placeholder="Ej: el_user" style="width:100%;background:var(--bg);border:1px solid var(--border);padding:9px;border-radius:8px;color:white;margin-top:5px;"></div>
         </div>
       </div>
 
@@ -1159,9 +1164,15 @@
     tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px;">Escaneando...</td></tr>';
     try {
       const res = await fetch('/api/members');
+      if (res.status === 401) { window.location.reload(); return; }
+      
+      const ct = res.headers.get('content-type') || '';
+      if (!ct.includes('application/json')) throw new Error("Server returned HTML");
+      
       const members = await res.json();
+      if (members.expired) { window.location.reload(); return; }
       if (members.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" style="color:#ef4444;text-align:center;">Error: Verifica el "Server Members Intent" en Discord Developer Portal.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4" style="color:#ef4444;text-align:center;">Error o lista vacía: Verifica el "Server Members Intent" o tu Bot Token.</td></tr>';
         return;
       }
       
@@ -1373,8 +1384,13 @@
     set('s-mod-spam',   cfg.moderation?.anti_spam);
     set('s-wf-enabled', cfg.word_filter?.enabled);
     set('s-wf-words',   (cfg.word_filter?.words||[]).join(', '));
-    set('s-st-ch',   cfg.stream_alert?.channel_id);
-    set('s-st-user', cfg.stream_alert?.kick_username);
+    const soc = cfg.socials || {};
+    set('s-soc-ch',     soc.channel_id);
+    set('s-soc-enabled',soc.enabled);
+    set('s-soc-kick',   soc.kick);
+    set('s-soc-tiktok', soc.tiktok);
+    set('s-soc-yt',     soc.youtube);
+    set('s-soc-twitch', soc.twitch);
     set('s-tk-cat',  cfg.tickets?.category_id);
     set('s-tk-role', cfg.tickets?.support_role_id);
     const ob = cfg.onboarding || {};
@@ -1399,7 +1415,7 @@
       fetch('/api/xp',           {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:gc('s-xp-enabled'),levelup_channel_id:g('s-xp-ch')})}),
       fetch('/api/moderation',   {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({anti_links:gc('s-mod-links'),anti_spam:gc('s-mod-spam')})}),
       fetch('/api/word_filter',  {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:gc('s-wf-enabled'),words})}),
-      fetch('/api/stream_alert', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:true,channel_id:g('s-st-ch'),kick_username:g('s-st-user')})}),
+      fetch('/api/socials',      {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:gc('s-soc-enabled'),channel_id:g('s-soc-ch'),kick:g('s-soc-kick'),tiktok:g('s-soc-tiktok'),youtube:g('s-soc-yt'),twitch:g('s-soc-twitch')})}),
       fetch('/api/tickets',      {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:true,category_id:g('s-tk-cat'),support_role_id:g('s-tk-role')})}),
       fetch('/api/onboarding',   {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:gc('s-ob-enabled'),channel_id:g('s-ob-ch'),quarantine_role_id:g('s-ob-quar'),verified_role_id:g('s-ob-verified'),role_pc:g('s-ob-pc'),role_console:g('s-ob-console'),role_mobile:g('s-ob-mobile'),role_adult:g('s-ob-adult'),role_minor:g('s-ob-minor')})}),
     ];
@@ -1443,9 +1459,11 @@
       // Check content-type before parsing JSON to avoid the HTML error
       const ct = r.headers.get('content-type') || '';
       if (!ct.includes('application/json')) {
+        if (r.status === 401) { window.location.reload(); return; }
         addLog('Error del servidor (respuesta no JSON). Revisa los logs de Railway.', 'err');
       } else {
         const data = await r.json();
+        if (data.expired) { window.location.reload(); return; }
         if (!data.ok) {
           addLog('Error: ' + data.error, 'err');
         } else {
