@@ -459,23 +459,42 @@ def api_ai_console():
     if not GEMINI_KEY: return jsonify({"ok": False, "error": "GEMINI_API_KEY no configurada. Agrega la clave en Railway para usar la IA."})
 
     try:
-        sys_prompt = '''Eres el núcleo IA de administración de un servidor de Discord...
-El usuario te dará una orden. Responde ÚNICAMENTE con un JSON válido.
-Acciones permitidas en el JSON:
-1. Crear canal: {"action": "create_channel", "name": "nombre", "type": 0 (texto) o 2 (voz) o 4 (categoría)}
-2. Enviar mensaje global: {"action": "send_message", "channel_id": "ide del canal o null para usar system channel", "content": "mensaje épico"}
-3. Crear rol: {"action": "create_role", "name": "nombre"}
-4. Respuestas informativas: {"action": "reply", "content": "soy la ia respondiendo a una pregunta o charla"}
-Si la peticion no es de administracion, responde con 'reply' de forma gamer e inteligente.'''
+        # Pre-fetch context so AI knows what the server looks like!
+        g = discord_get(f"/guilds/{GUILD_ID}?with_counts=true")
+        if not g: g = {}
+        m_count = g.get("approximate_member_count", g.get("member_count","?"))
+        s_name = g.get("name","The Family")
+        
+        sys_prompt = f'''Eres el núcleo IA avanzado de administración y monitoreo de un servidor de Discord llamado "{s_name}".
+ACTUALMENTE TIENES VISIÓN GLOBAL DEL SISTEMA: El servidor tiene {m_count} miembros humanos/bots.
+
+El usuario es tu Comandante. Te dará una orden o te hará una pregunta de análisis. Responde ÚNICAMENTE con un JSON válido.
+Acciones estrictamente permitidas en el JSON:
+1. Crear canal: {{"action": "create_channel", "name": "nombre", "type": 0}}
+2. Crear categoría: {{"action": "create_channel", "name": "nombre", "type": 4}}
+3. Enviar mensaje global: {{"action": "send_message", "channel_id": "null", "content": "mensaje"}}
+4. Moderación Severa: {{"action": "ban_user", "user": "ID_o_Nombre_del_infractor", "reason": "motivo"}}
+5. Expulsión: {{"action": "kick_user", "user": "ID_o_Nombre", "reason": "motivo"}}
+6. Aislamiento/Timeout: {{"action": "timeout_user", "user": "ID", "duration_minutes": 10}}
+7. Análisis o Charla General: {{"action": "reply", "content": "Texto de respuesta como IA inteligente analizando el entorno."}}
+
+Tus directrices:
+- Si te piden "analizar el server", usa la acción 'reply' y menciona los datos del sistema (como los {m_count} miembros) de forma épica y profesional. NO digas que no tienes permisos.
+- Si no sabes el ID de un usuario para moderarlo, usa 'reply' para preguntar el ID exacto o búscalo por su nombre de forma simulada.
+- JAMÁS pongas texto Markdown fuera del JSON, ni barras invertidas locas.'''
         
         resp = gemini_client.models.generate_content(
             model='gemini-2.5-flash',
-            contents=f"{sys_prompt}\n\nOrden del usuario: {prompt}"
+            contents=f"{sys_prompt}\n\nOrden del Comandante: {prompt}"
         )
-        text = resp.text.strip().replace("```json","").replace("```","").strip()
+        text = resp.text.strip()
+        if text.startswith("```json"): text = text[7:]
+        if text.endswith("```"): text = text[:-3]
+        text = text.strip()
+        
         data = json.loads(text)
         
-        # Execute action on Discord
+        # Execute action on Discord array of permissions
         act = data.get("action")
         
         if act == "reply":
@@ -505,6 +524,25 @@ Si la peticion no es de administracion, responde con 'reply' de forma gamer e in
                 discord_post(f"/channels/{cid}/messages", {"content": data.get("content")})
                 return jsonify({"ok": True, "type": "success", "msg": f"Mensaje emitido vía IA al canal."})
             return jsonify({"ok": False, "error": "No hay canal donde enviar."})
+
+        elif act in ("ban_user", "kick_user", "timeout_user"):
+            user_ref = str(data.get("user", ""))
+            reason = data.get("reason", "Decisión del Comandante Supremo.")
+            uid = "".join(filter(str.isdigit, user_ref))
+            if not uid:
+                return jsonify({"ok": False, "type": "reply", "msg": f"IA requirió {act} pero '{user_ref}' no pude procesarlo como ID numérico."})
+                
+            if act == "ban_user":
+                req_lib.put(f"{DISCORD}/guilds/{GUILD_ID}/bans/{uid}", headers={**HEADERS(),"X-Audit-Log-Reason":reason}, json={})
+                return jsonify({"ok":True, "type": "success", "msg": f"💥 Usuario {uid} baneado exitosamente. Razón: {reason}"})
+            elif act == "kick_user":
+                req_lib.delete(f"{DISCORD}/guilds/{GUILD_ID}/members/{uid}", headers={**HEADERS(),"X-Audit-Log-Reason":reason})
+                return jsonify({"ok":True, "type": "success", "msg": f"👢 Usuario {uid} expulsado."})
+            elif act == "timeout_user":
+                from datetime import datetime, timedelta, timezone
+                until = (datetime.now(timezone.utc) + timedelta(minutes=data.get("duration_minutes",10))).isoformat()
+                req_lib.patch(f"{DISCORD}/guilds/{GUILD_ID}/members/{uid}", headers={**HEADERS(),"X-Audit-Log-Reason":reason}, json={"communication_disabled_until":until})
+                return jsonify({"ok":True, "type": "success", "msg": f"🔇 Usuario {uid} aislado temporalmente."})
 
         return jsonify({"ok": True, "type": "reply", "msg": f"Entendido: {data}"})
 
