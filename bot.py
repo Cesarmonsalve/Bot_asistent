@@ -3,7 +3,7 @@ from discord.ext import commands, tasks
 from discord import app_commands
 import json, os, asyncio, aiohttp, re, random
 from datetime import datetime, timedelta, timezone
-from groq import Groq
+from groq import AsyncGroq
 
 TOKEN    = (os.environ.get("BOT_TOKEN") or "").strip()
 GUILD_ID = int((os.environ.get("GUILD_ID") or "0").strip())
@@ -13,7 +13,7 @@ gemini_client = None
 groq_client   = None
 GROQ_MODEL    = "llama-3.3-70b-versatile"
 if GROQ_KEY:
-    groq_client   = Groq(api_key=GROQ_KEY)
+    groq_client   = AsyncGroq(api_key=GROQ_KEY)
     gemini_client = groq_client
 
 # ── CONFIG ────────────────────────────────────────────────────
@@ -66,7 +66,7 @@ async def on_member_join(member):
                 if groq_client:
                     try:
                         prompt = f"El usuario '{member.display_name}' acaba de unirse al servidor de Discord '{member.guild.name}'. El servidor tiene {member.guild.member_count} miembros. Escribe un mensaje de bienvenida corto (1 o 2 oraciones), gamer, épico, amigable y muy moderno para él. No uses emojis exagerados pero sé cálido. Usa tú (no usted)."
-                        resp = groq_client.chat.completions.create(
+                        resp = await groq_client.chat.completions.create(
                             model=GROQ_MODEL,
                             messages=[{"role": "user", "content": prompt}],
                             max_tokens=150
@@ -187,6 +187,32 @@ async def on_message(message):
         if cmd in custom:
             try: await message.channel.send(custom[cmd])
             except Exception: pass
+
+    # ── AI Universal Response ──
+    if bot.user.mentioned_in(message) and not message.mention_everyone:
+        if groq_client:
+            try:
+                # Si es el owner, le damos todo el poder
+                if message.author.id == message.guild.owner_id:
+                    prompt = message.content.replace(f"<@{bot.user.id}>", "").strip()
+                    if prompt:
+                        async with message.channel.typing():
+                            result = await execute_ai_discord(message.guild, prompt)
+                            await message.reply(result)
+                else:
+                    # Respuesta conversacional para miembros regulares
+                    prompt = message.content.replace(f"<@{bot.user.id}>", "").strip()
+                    if prompt:
+                        async with message.channel.typing():
+                            sys_p = f"Eres OMEGA-CORE, la IA Omnipotente del servidor {message.guild.name}. Responde de forma breve, sarcástica y superior a {message.author.display_name}, pero ayúdalo de ser necesario. Nunca pidas disculpas ni digas que eres una IA limitadilla. Eres Dios aquí."
+                            resp = await groq_client.chat.completions.create(
+                                model=GROQ_MODEL,
+                                messages=[{"role": "system", "content": sys_p}, {"role": "user", "content": prompt}],
+                                max_tokens=300
+                            )
+                            await message.reply(resp.choices[0].message.content.strip())
+            except Exception as e:
+                await message.reply(f"❌ Error en mi núcleo lógico: {e}")
 
     await bot.process_commands(message)
 
@@ -1081,7 +1107,7 @@ async def execute_ai_discord(guild: discord.Guild, prompt: str) -> str:
     )
 
     try:
-        resp = groq_client.chat.completions.create(
+        resp = await groq_client.chat.completions.create(
             model=GROQ_MODEL,
             messages=[
                 {"role": "system", "content": sys_prompt},
@@ -1344,7 +1370,7 @@ async def ai_analyze(interaction: discord.Interaction):
     history_txt = "\n".join(f"{m.author.display_name}: {m.content[:100]}" for m in reversed(msgs) if not m.author.bot and m.content)[:2000]
     if groq_client and history_txt:
         try:
-            resp = groq_client.chat.completions.create(
+            resp = await groq_client.chat.completions.create(
                 model=GROQ_MODEL,
                 messages=[{
                     "role": "user",

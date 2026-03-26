@@ -261,6 +261,17 @@ def api_leaderboard():
     top=sorted(xp_data.items(),key=lambda x:x[1].get("xp",0),reverse=True)[:20]
     return jsonify([{"id":uid,"name":names.get(uid,f"#{uid[:6]}"),"xp":d.get("xp",0),"level":d.get("level",0)} for uid,d in top])
 
+# ── DIAGNOSTIC ───────────────────────────────────────────────
+@app.route("/api/diagnostic")
+@auth_required
+def api_diagnostic():
+    return jsonify({
+        "discord_token": bool(BOT_TOKEN),
+        "guild_id": bool(GUILD_ID),
+        "groq_key": bool(GROQ_KEY),
+        "config_loaded": bool(load_config())
+    })
+
 # ── CUSTOM COMMANDS ──────────────────────────────────────────
 @app.route("/api/custom_commands", methods=["POST"])
 @auth_required
