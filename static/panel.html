@@ -653,6 +653,18 @@
       border-radius: 8px; color: white; margin: 15px 0; outline: none;
     }
 
+    /* Discord Preview Styles */
+    .discord-modal-preview {
+      background: #313338; border-radius: 8px; width: 440px; padding: 16px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.4); font-family: sans-serif; color: #dbdee1;
+    }
+    .d-title { color: white; font-size: 15px; font-weight: 700; margin-bottom: 20px; text-transform: none; }
+    .d-field { margin-bottom: 20px; }
+    .d-label { color: #b5bac1; font-size: 12px; font-weight: 700; margin-bottom: 8px; text-transform: uppercase; }
+    .d-input { background: #1e1f22; border-radius: 3px; padding: 10px; font-size: 14px; border: 1px solid #1e1f22; min-height: 40px; }
+    .d-footer { display: flex; justify-content: flex-end; align-items: center; gap: 24px; margin-top: 10px; }
+    .d-btn-cancel { color: white; font-size: 14px; cursor: pointer; }
+    .d-btn-submit { background: #5865f2; color: white; padding: 8px 24px; border-radius: 3px; font-size: 14px; font-weight: 500; }
   </style>
 </head>
 <body>
@@ -691,6 +703,7 @@
     <div class="nav-items">
       <div class="nav-btn active" id="btn-dashboard" onclick="showTab('dashboard')"><i class="ph ph-squares-four"></i></div>
       <div class="nav-btn" id="btn-announce" onclick="showTab('announce')"><i class="ph ph-megaphone-simple"></i></div>
+      <div class="nav-btn" id="btn-onboarding" onclick="showTab('onboarding')"><i class="ph ph-shield-check"></i></div>
       <div class="nav-btn" id="btn-settings" onclick="showTab('settings')"><i class="ph ph-gear"></i></div>
       <div class="nav-btn" id="btn-members" onclick="showTab('members')"><i class="ph ph-users-three"></i></div>
     </div>
@@ -977,6 +990,90 @@
     </div>
   </div>
 
+  <!-- TAB: ONBOARDING -->
+  <div style="display:none" id="tab-onboarding" class="main-wrapper" style="position:absolute;inset:0;overflow-y:auto;padding:30px 40px;">
+    <div style="max-width:800px;margin:0 auto;display:flex;flex-direction:column;gap:24px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:24px;font-weight:800;color:var(--accent);">🔐 Onboarding / Verificación</div>
+        <button class="btn-primary" onclick="saveAllSettings()">💾 Guardar Todo</button>
+      </div>
+
+      <div style="display: flex; gap: 30px; align-items: flex-start;">
+        <!-- Preguntas UI -->
+        <div style="flex: 1; background:var(--surface);border-radius:var(--radius-lg);padding:24px;border:1px solid rgba(99,102,241,0.4);">
+          <div style="font-weight:700;margin-bottom:8px;color:#6366f1;">Preguntas del Formulario Inicial</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:20px;">Personaliza las preguntas que los usuarios verán.</div>
+          
+          <div style="display:flex; flex-direction:column; gap:16px;">
+            <div oninput="updateOnboardingPreview()">
+              <label style="color:var(--text-muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">Pregunta 1</label>
+              <input type="text" id="ob-q1" placeholder="¿De dónde eres?" style="width:100%;margin-top:4px;background:var(--bg);border:1px solid var(--border);padding:10px;border-radius:8px;color:white;">
+              <input type="text" id="ob-p1" placeholder="Ej: País / Ciudad" style="width:100%;margin-top:4px;font-size:11px;color:gray;background:var(--bg);border:1px solid var(--border);padding:6px;border-radius:8px;">
+            </div>
+            <div oninput="updateOnboardingPreview()">
+              <label style="color:var(--text-muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">Pregunta 2 (Equipos)</label>
+              <input type="text" id="ob-q2" placeholder="¿Qué equipo/consola usas?" style="width:100%;margin-top:4px;background:var(--bg);border:1px solid var(--border);padding:10px;border-radius:8px;color:white;">
+              <input type="text" id="ob-p2" placeholder="Ej: PC / PS5 / Xbox" style="width:100%;margin-top:4px;font-size:11px;color:gray;background:var(--bg);border:1px solid var(--border);padding:6px;border-radius:8px;">
+            </div>
+            <div oninput="updateOnboardingPreview()">
+              <label style="color:var(--text-muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">Pregunta 3</label>
+              <input type="text" id="ob-q3" placeholder="¿Cómo nos conociste?" style="width:100%;margin-top:4px;background:var(--bg);border:1px solid var(--border);padding:10px;border-radius:8px;color:white;">
+              <input type="text" id="ob-p3" placeholder="Ej: Invitación / Redes" style="width:100%;margin-top:4px;font-size:11px;color:gray;background:var(--bg);border:1px solid var(--border);padding:6px;border-radius:8px;">
+            </div>
+            <div oninput="updateOnboardingPreview()">
+              <label style="color:var(--text-muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">Pregunta 4 (Edad)</label>
+              <input type="text" id="ob-q4" placeholder="¿Cuántos años tienes?" style="width:100%;margin-top:4px;background:var(--bg);border:1px solid var(--border);padding:10px;border-radius:8px;color:white;">
+              <input type="text" id="ob-p4" placeholder="Ej: 20" style="width:100%;margin-top:4px;font-size:11px;color:gray;background:var(--bg);border:1px solid var(--border);padding:6px;border-radius:8px;">
+            </div>
+            <div oninput="updateOnboardingPreview()">
+              <label style="color:var(--text-muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">Pregunta 5</label>
+              <input type="text" id="ob-q5" placeholder="¿Algo más?" style="width:100%;margin-top:4px;background:var(--bg);border:1px solid var(--border);padding:10px;border-radius:8px;color:white;">
+              <input type="text" id="ob-p5" placeholder="..." style="width:100%;margin-top:4px;font-size:11px;color:gray;background:var(--bg);border:1px solid var(--border);padding:6px;border-radius:8px;">
+            </div>
+          </div>
+        </div>
+
+        <!-- Preview Sticky Column -->
+        <div style="width: 440px; position: sticky; top: 20px;">
+          <div style="font-size:12px; font-weight:700; color:var(--text-muted); margin-bottom:12px; text-transform:uppercase; display:flex; align-items:center; gap:8px;">
+            <i class="ph ph-eye"></i> Vista Previa (Discord Modal)
+          </div>
+          <div class="discord-modal-preview">
+            <div class="d-title">Cuestionario de Verificación</div>
+            <div id="preview-fields-container">
+              <!-- Rendered via JS -->
+            </div>
+            <div class="d-footer">
+              <span class="d-btn-cancel">Cancelar</span>
+              <div class="d-btn-submit">Enviar</div>
+            </div>
+          </div>
+          <div style="margin-top:16px; font-size:11px; color:#eab308; background:rgba(234,179,8,0.1); padding:10px; border-radius:6px; border:1px solid rgba(234,179,8,0.2);">
+            <b>Tip:</b> Los usuarios verán esto apenas entren. Procura ser conciso pero descriptivo para que el Bot asigne los roles correctos.
+          </div>
+        </div>
+      </div>
+
+      <!-- Configuración Onboarding Modifiers -->
+      <div style="background:var(--surface);border-radius:var(--radius-lg);padding:24px;border:1px solid var(--border);">
+        <div style="font-weight:700;margin-bottom:14px;color:#22c55e;">Asignación de Roles y Configuración Vital</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;">
+          <div><label style="color:var(--text-muted);font-size:12px;">Canal Verificación (ID)</label><input id="s-ob-ch" placeholder="ID" style="width:100%;background:var(--bg);border:1px solid var(--border);padding:10px;border-radius:8px;color:white;margin-top:4px;"></div>
+          <div><label style="color:var(--text-muted);font-size:12px;">Rol Cuarentena (Bloqueado)</label><input id="s-ob-quar" placeholder="ID" style="width:100%;background:var(--bg);border:1px solid var(--border);padding:10px;border-radius:8px;color:white;margin-top:4px;"></div>
+          <div><label style="color:var(--text-muted);font-size:12px;">Rol Verificado (General)</label><input id="s-ob-verified" placeholder="ID" style="width:100%;background:var(--bg);border:1px solid var(--border);padding:10px;border-radius:8px;color:white;margin-top:4px;"></div>
+          <div><label style="color:var(--text-muted);font-size:12px;">Rol PC Gamer (Automático)</label><input id="s-ob-pc" placeholder="ID" style="width:100%;background:var(--bg);border:1px solid var(--border);padding:10px;border-radius:8px;color:white;margin-top:4px;"></div>
+          <div><label style="color:var(--text-muted);font-size:12px;">Rol Console (Automático)</label><input id="s-ob-console" placeholder="ID" style="width:100%;background:var(--bg);border:1px solid var(--border);padding:10px;border-radius:8px;color:white;margin-top:4px;"></div>
+          <div><label style="color:var(--text-muted);font-size:12px;">Rol Mobile (Automático)</label><input id="s-ob-mobile" placeholder="ID" style="width:100%;background:var(--bg);border:1px solid var(--border);padding:10px;border-radius:8px;color:white;margin-top:4px;"></div>
+          <div><label style="color:var(--text-muted);font-size:12px;">Rol Mayor de +18</label><input id="s-ob-adult" placeholder="ID" style="width:100%;background:var(--bg);border:1px solid var(--border);padding:10px;border-radius:8px;color:white;margin-top:4px;"></div>
+          <div><label style="color:var(--text-muted);font-size:12px;">Rol Menor de -18</label><input id="s-ob-minor" placeholder="ID" style="width:100%;background:var(--bg);border:1px solid var(--border);padding:10px;border-radius:8px;color:white;margin-top:4px;"></div>
+        </div>
+        <div style="margin-top:20px;display:flex;gap:10px;">
+          <label style="color:white;font-size:14px;font-weight:700;display:flex;align-items:center;gap:10px;"><input type="checkbox" id="s-ob-enabled" style="accent-color:var(--accent);width:18px;height:18px;"> 🚀 Activar Sistema de Onboarding</label>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- TAB: SETTINGS -->
   <div style="display:none" id="tab-settings" class="main-wrapper">
     <div style="max-width:800px;margin:0 auto;display:flex;flex-direction:column;gap:24px;">
@@ -1036,25 +1133,6 @@
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div><label style="color:var(--text-muted);font-size:12px;">Categoría tickets (ID)</label><input type="text" id="s-tk-cat" placeholder="ID" style="width:100%;background:var(--bg);border:1px solid var(--border);padding:9px;border-radius:8px;color:white;margin-top:5px;"></div>
           <div><label style="color:var(--text-muted);font-size:12px;">Rol soporte (ID)</label><input type="text" id="s-tk-role" placeholder="ID" style="width:100%;background:var(--bg);border:1px solid var(--border);padding:9px;border-radius:8px;color:white;margin-top:5px;"></div>
-        </div>
-      </div>
-
-      <!-- Onboarding -->
-      <div style="background:var(--surface);border-radius:var(--radius-lg);padding:20px;border:1px solid var(--border);border-color:rgba(99,102,241,0.4);">
-        <div style="font-weight:700;margin-bottom:4px;color:#6366f1;">🔐 Sistema de Verificación / Onboarding</div>
-        <div style="font-size:11px;color:var(--text-muted);margin-bottom:14px;">Cuando alguien entra, recibe un DM con cuestionario. Según respuestas, se asignan roles automáticamente.</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-          <div><label style="color:var(--text-muted);font-size:12px;">Canal verificación (ID)</label><input type="text" id="s-ob-ch" placeholder="ID" style="width:100%;background:var(--bg);border:1px solid var(--border);padding:9px;border-radius:8px;color:white;margin-top:5px;"></div>
-          <div><label style="color:var(--text-muted);font-size:12px;">Rol cuarentena (sin verificar)</label><input type="text" id="s-ob-quar" placeholder="ID" style="width:100%;background:var(--bg);border:1px solid var(--border);padding:9px;border-radius:8px;color:white;margin-top:5px;"></div>
-          <div><label style="color:var(--text-muted);font-size:12px;">Rol verificado (acceso general)</label><input type="text" id="s-ob-verified" placeholder="ID" style="width:100%;background:var(--bg);border:1px solid var(--border);padding:9px;border-radius:8px;color:white;margin-top:5px;"></div>
-          <div><label style="color:var(--text-muted);font-size:12px;">Rol PC Gamer</label><input type="text" id="s-ob-pc" placeholder="ID" style="width:100%;background:var(--bg);border:1px solid var(--border);padding:9px;border-radius:8px;color:white;margin-top:5px;"></div>
-          <div><label style="color:var(--text-muted);font-size:12px;">Rol Console Player</label><input type="text" id="s-ob-console" placeholder="ID" style="width:100%;background:var(--bg);border:1px solid var(--border);padding:9px;border-radius:8px;color:white;margin-top:5px;"></div>
-          <div><label style="color:var(--text-muted);font-size:12px;">Rol Mobile</label><input type="text" id="s-ob-mobile" placeholder="ID" style="width:100%;background:var(--bg);border:1px solid var(--border);padding:9px;border-radius:8px;color:white;margin-top:5px;"></div>
-          <div><label style="color:var(--text-muted);font-size:12px;">Rol +18</label><input type="text" id="s-ob-adult" placeholder="ID" style="width:100%;background:var(--bg);border:1px solid var(--border);padding:9px;border-radius:8px;color:white;margin-top:5px;"></div>
-          <div><label style="color:var(--text-muted);font-size:12px;">Rol -18</label><input type="text" id="s-ob-minor" placeholder="ID" style="width:100%;background:var(--bg);border:1px solid var(--border);padding:9px;border-radius:8px;color:white;margin-top:5px;"></div>
-        </div>
-        <div style="margin-top:14px;display:flex;gap:10px;">
-          <label style="color:var(--text-muted);font-size:13px;display:flex;align-items:center;gap:8px;"><input type="checkbox" id="s-ob-enabled" style="accent-color:var(--accent);"> Onboarding activo</label>
         </div>
       </div>
 
@@ -1144,8 +1222,8 @@
   }
 
   /* SPA Tabs Logic */
-  const ALL_TABS = ['dashboard','announce','settings','members'];
-  const ALL_BTNS = ['btn-dashboard','btn-announce','btn-settings','btn-members'];
+  const ALL_TABS = ['dashboard','announce','onboarding','settings','members'];
+  const ALL_BTNS = ['btn-dashboard','btn-announce','btn-onboarding','btn-settings','btn-members'];
 
   function showTab(tabName) {
     // Hide all tab content
@@ -1165,7 +1243,7 @@
     if (btnEl) btnEl.classList.add('active');
 
     if (tabName === 'members')  loadMembers();
-    if (tabName === 'settings') loadSettingsForm();
+    if (tabName === 'settings' || tabName === 'onboarding') loadSettingsForm();
     if (tabName === 'announce') loadChannelsForSelects();
   }
 
@@ -1428,7 +1506,26 @@
     set('s-ob-adult',   ob.role_adult);
     set('s-ob-minor',   ob.role_minor);
     set('s-ob-enabled', ob.enabled);
+    set('ob-q1', ob.q1); set('ob-p1', ob.p1);
+    set('ob-q2', ob.q2); set('ob-p2', ob.p2);
+    set('ob-q3', ob.q3); set('ob-p3', ob.p3);
+    set('ob-q4', ob.q4); set('ob-p4', ob.p4);
+    set('ob-q5', ob.q5); set('ob-p5', ob.p5);
+    updateOnboardingPreview();
   }
+
+  function updateOnboardingPreview() {
+    const container = document.getElementById('preview-fields-container');
+    if (!container) return;
+    let html = '';
+    for (let i = 1; i <= 5; i++) {
+      const q = document.getElementById(`ob-q${i}`).value || `¿Pregunta ${i}?`;
+      const p = document.getElementById(`ob-p${i}`).value || `Placeholder...`;
+      html += `<div class="d-field"><div class="d-label">${q}</div><div class="d-input">${p}</div></div>`;
+    }
+    container.innerHTML = html;
+  }
+
   async function saveAllSettings() {
     const g = id => document.getElementById(id)?.value || '';
     const gc = id => document.getElementById(id)?.checked || false;
@@ -1442,7 +1539,7 @@
       fetch('/api/word_filter',  {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:gc('s-wf-enabled'),words})}),
       fetch('/api/socials',      {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:gc('s-soc-enabled'),channel_id:g('s-soc-ch'),kick:g('s-soc-kick'),tiktok:g('s-soc-tiktok'),youtube:g('s-soc-yt'),twitch:g('s-soc-twitch')})}),
       fetch('/api/tickets',      {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:true,category_id:g('s-tk-cat'),support_role_id:g('s-tk-role')})}),
-      fetch('/api/onboarding',   {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:gc('s-ob-enabled'),channel_id:g('s-ob-ch'),quarantine_role_id:g('s-ob-quar'),verified_role_id:g('s-ob-verified'),role_pc:g('s-ob-pc'),role_console:g('s-ob-console'),role_mobile:g('s-ob-mobile'),role_adult:g('s-ob-adult'),role_minor:g('s-ob-minor')})}),
+      fetch('/api/onboarding',   {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:gc('s-ob-enabled'),channel_id:g('s-ob-ch'),quarantine_role_id:g('s-ob-quar'),verified_role_id:g('s-ob-verified'),role_pc:g('s-ob-pc'),role_console:g('s-ob-console'),role_mobile:g('s-ob-mobile'),role_adult:g('s-ob-adult'),role_minor:g('s-ob-minor'),q1:g('ob-q1'),p1:g('ob-p1'),q2:g('ob-q2'),p2:g('ob-p2'),q3:g('ob-q3'),p3:g('ob-p3'),q4:g('ob-q4'),p4:g('ob-p4'),q5:g('ob-q5'),p5:g('ob-p5')})}),
     ];
     try {
       await Promise.all(calls);
