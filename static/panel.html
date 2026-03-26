@@ -664,13 +664,10 @@
     <div class="brand">TF<span>.</span></div>
     
     <div class="nav-items">
-      <div class="nav-btn active"><i class="ph ph-squares-four"></i></div>
+      <div class="nav-btn active" id="btn-dashboard" onclick="showTab('dashboard')"><i class="ph ph-squares-four"></i></div>
       <div class="nav-btn"><i class="ph ph-download-simple"></i></div>
-      <div class="nav-btn"><i class="ph ph-shopping-bag"></i></div>
-      <div class="nav-btn"><i class="ph ph-game-controller"></i></div>
-      <div class="nav-btn"><i class="ph ph-camera"></i></div>
-      <div class="nav-btn"><i class="ph ph-chart-pie-slice"></i></div>
-      <div class="nav-btn" style="color: var(--accent);"><i class="ph ph-users-three"></i></div>
+      <div class="nav-btn" onclick="showTab('settings')"><i class="ph ph-gear"></i></div>
+      <div class="nav-btn" style="color: var(--accent);" id="btn-members" onclick="showTab('members')"><i class="ph ph-users-three"></i></div>
     </div>
 
     <div class="sidebar-bottom">
@@ -694,7 +691,7 @@
       </div>
     </header>
 
-    <div class="content-layout">
+    <div class="content-layout" id="tab-dashboard">
       
       <!-- CENTER COLUMN -->
       <div class="main-col">
@@ -869,18 +866,18 @@
             <div class="pt-icon"><i class="ph-fill ph-users" style="color: #6366f1;"></i></div>
             <div class="pt-txt">
               <div class="pt-name">Miembros</div>
-              <div class="pt-sub">1,240 totales</div>
+              <div class="pt-sub" id="stat-members">Cargando...</div>
             </div>
             <div class="pt-avatars">
-              <div class="pt-ava" style="z-index: 3; background: #3b82f6;">+2</div>
+              <div class="pt-ava" style="z-index: 3; background: #3b82f6;"><i class="ph-fill ph-pulse"></i></div>
             </div>
           </div>
 
           <div class="pt-item">
             <div class="pt-icon" style="background: rgba(34,197,94,0.1);"><i class="ph-fill ph-chat-teardrop" style="color: #22c55e;"></i></div>
             <div class="pt-txt">
-              <div class="pt-name">Mensajes hoy</div>
-              <div class="pt-sub">4,821 enviados</div>
+              <div class="pt-name">Canales & Voz</div>
+              <div class="pt-sub" id="stat-channels">Cargando...</div>
             </div>
             <div class="pt-avatars">
               <div class="pt-ava">^</div>
@@ -892,6 +889,31 @@
       </div>
 
     </div>
+
+    <!-- TAB: MEMBERS (New) -->
+    <div class="content-layout" id="tab-members" style="display: none; grid-template-columns: 1fr;">
+      <div class="main-col">
+        <div class="section-header">
+          <span class="section-title" style="font-size: 24px; color: var(--accent);">Directorio de Miembros</span>
+        </div>
+        <div style="background: var(--surface); border-radius: var(--radius-lg); padding: 20px;">
+          <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 14px;">
+            <thead>
+              <tr style="color: var(--text-muted); border-bottom: 1px solid var(--border);">
+                <th style="padding: 10px;">Usuario</th>
+                <th style="padding: 10px;">ID</th>
+                <th style="padding: 10px;">Tipo</th>
+                <th style="padding: 10px; text-align: right;">Acción</th>
+              </tr>
+            </thead>
+            <tbody id="members-table-body">
+              <tr><td colspan="4" style="text-align:center; padding: 20px; color: var(--text-muted);">Cargando red neuronal de recursos...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
   </main>
 
 </div>
@@ -940,8 +962,76 @@
     try {
       const res = await fetch('/api/config');
       serverConfig = await res.json();
+      
+      // Load real-time stats
+      loadStats();
     } catch(e) { console.error("Error loading config", e); }
   };
+
+  /* SPA Tabs Logic */
+  function showTab(tabName) {
+    document.getElementById('tab-dashboard').style.display = 'none';
+    document.getElementById('tab-members').style.display = 'none';
+    
+    document.getElementById('btn-dashboard').classList.remove('active');
+    document.getElementById('btn-members').classList.remove('active');
+    
+    if (tabName === 'dashboard') {
+      document.getElementById('tab-dashboard').style.display = 'grid';
+      document.getElementById('btn-dashboard').classList.add('active');
+    } else if (tabName === 'members') {
+      document.getElementById('tab-members').style.display = 'grid';
+      document.getElementById('btn-members').classList.add('active');
+      loadMembers();
+    }
+  }
+
+  /* Live Data Logic */
+  async function loadStats() {
+    try {
+      const res = await fetch('/api/guild');
+      const data = await res.json();
+      if (data.member_count !== undefined) {
+        document.getElementById('stat-members').innerText = data.member_count + " totales";
+        document.getElementById('stat-channels').innerText = data.channels + " activos";
+      } else {
+        document.getElementById('stat-members').innerText = "Privilegios requeridos";
+        document.getElementById('stat-channels').innerText = "Revisar Intent";
+      }
+    } catch(e) { console.error("Error stats", e); }
+  }
+
+  async function loadMembers() {
+    const tbody = document.getElementById('members-table-body');
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px;">Escaneando...</td></tr>';
+    try {
+      const res = await fetch('/api/members');
+      const members = await res.json();
+      if (members.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="color:#ef4444;text-align:center;">Error: Verifica el "Server Members Intent" en Discord Developer Portal.</td></tr>';
+        return;
+      }
+      
+      let html = "";
+      members.forEach(m => {
+        const badge = m.bot ? '<span style="background:var(--accent);padding:2px 6px;border-radius:4px;font-size:10px;color:white;">BOT</span>' : '<span style="background:#3b82f6;padding:2px 6px;border-radius:4px;font-size:10px;color:white;">HUMAN</span>';
+        html += `
+          <tr style="border-bottom: 1px solid var(--border);">
+            <td style="padding: 10px; display:flex; align-items:center; gap:10px;">
+              <img src="https://cdn.discordapp.com/avatars/${m.id}/${m.avatar}.png?size=32" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'" style="width:32px;height:32px;border-radius:50%;">
+              <span style="font-weight:600;">${m.display_name}</span>
+            </td>
+            <td style="padding: 10px; color:var(--text-muted); font-family:monospace;">${m.id}</td>
+            <td style="padding: 10px;">${badge}</td>
+            <td style="padding: 10px; text-align:right;">
+              <button class="btn-outline" style="padding:4px 8px;font-size:10px;" onclick="navigator.clipboard.writeText('${m.id}')">Copiar ID</button>
+            </td>
+          </tr>
+        `;
+      });
+      tbody.innerHTML = html;
+    } catch(e) { tbody.innerHTML = '<tr><td colspan="4">Error de conexión</td></tr>'; }
+  }
 
   /* Modal Logic */
   function closeModal() {
