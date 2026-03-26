@@ -210,6 +210,17 @@ tr:hover td{background:rgba(99,102,241,.03)}
     <!-- DASHBOARD -->
     <div class="page active" id="page-dashboard">
       <div class="pg-hd"><div class="pg-title">Dashboard</div><div class="pg-sub">Vista general de tu servidor</div></div>
+      <!-- SMART SETUP CARD -->
+      <div class="card" style="border-color:rgba(99,102,241,.35);background:linear-gradient(135deg,rgba(99,102,241,.08),rgba(168,85,247,.05));margin-bottom:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+          <div>
+            <div style="font-size:15px;font-weight:800;display:flex;align-items:center;gap:8px">🤖 Smart Setup <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(99,102,241,.2);color:var(--ind-l)">IA</span></div>
+            <div style="font-size:12px;color:var(--mut);margin-top:4px">El bot analiza tu servidor y configura todo automáticamente — canales, roles, módulos.</div>
+          </div>
+          <button class="btn" id="smart-btn" onclick="runAutoConfig()" style="flex-shrink:0">🔍 Analizar y Configurar</button>
+        </div>
+        <div id="analysis-result" style="display:none;margin-top:16px"></div>
+      </div>
       <div class="stats">
         <div class="sc"><div class="sc-lbl">Miembros</div><div class="sc-val ac-ind" id="stat-m">—</div><div class="sc-sub">En el servidor</div></div>
         <div class="sc"><div class="sc-lbl">Canales</div><div class="sc-val ac-pur" id="stat-c">—</div><div class="sc-sub">Texto + voz</div></div>
@@ -702,8 +713,56 @@ async function loadLeaderboard(){
 // UTILS
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 
+// SMART AUTO-CONFIG
+async function runAutoConfig(){
+  const btn=document.getElementById('smart-btn');
+  const res=document.getElementById('analysis-result');
+  btn.textContent='⏳ Analizando...';btn.disabled=true;
+  res.style.display='none';
+  try{
+    const r=await fetch('/api/autoconfig',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    const data=await r.json();
+    if(!data.ok){toast('❌ '+data.error,'error');btn.textContent='🔍 Analizar y Configurar';btn.disabled=false;return;}
+    const a=data.analysis; const d=a.detected; const s=data.suggestions;
+    const det=(key,label)=>d[key]?`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)"><span style="font-size:11px;color:var(--mut)">${label}</span><span style="font-size:11px;color:var(--grn);font-family:var(--mono)">✅ Detectado</span></div>`:`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)"><span style="font-size:11px;color:var(--mut)">${label}</span><span style="font-size:11px;color:var(--mut)">— No encontrado</span></div>`;
+    res.style.display='block';
+    res.innerHTML=`
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div style="background:rgba(0,0,0,.25);border-radius:10px;padding:14px">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--ind-l);margin-bottom:10px">📊 Servidor Analizado</div>
+          <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)"><span style="font-size:11px;color:var(--mut)">Canales totales</span><span style="font-size:12px;font-weight:700;font-family:var(--mono)">${a.channels_total}</span></div>
+          <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)"><span style="font-size:11px;color:var(--mut)">Canales de texto</span><span style="font-size:12px;font-weight:700;font-family:var(--mono)">${a.text_channels}</span></div>
+          <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)"><span style="font-size:11px;color:var(--mut)">Categorías</span><span style="font-size:12px;font-weight:700;font-family:var(--mono)">${a.categories}</span></div>
+          <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)"><span style="font-size:11px;color:var(--mut)">Roles</span><span style="font-size:12px;font-weight:700;font-family:var(--mono)">${a.roles_total}</span></div>
+          <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)"><span style="font-size:11px;color:var(--mut)">Humanos</span><span style="font-size:12px;font-weight:700;font-family:var(--mono)">${a.members_humans}</span></div>
+          <div style="display:flex;justify-content:space-between;padding:5px 0"><span style="font-size:11px;color:var(--mut)">Bots</span><span style="font-size:12px;font-weight:700;font-family:var(--mono)">${a.members_bots}</span></div>
+        </div>
+        <div style="background:rgba(0,0,0,.25);border-radius:10px;padding:14px">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--grn);margin-bottom:10px">🔍 Detecciones</div>
+          ${det('welcome_channel','Canal Bienvenida')}
+          ${det('goodbye_channel','Canal Despedida')}
+          ${det('log_channel','Canal de Logs')}
+          ${det('stream_channel','Canal Streams')}
+          ${det('ticket_category','Categoría Tickets')}
+          ${det('member_role','Rol de Miembro')}
+          ${det('staff_role','Rol de Staff')}
+          ${det('vip_role','Rol VIP')}
+        </div>
+      </div>
+      <div style="margin-top:12px;background:rgba(34,197,94,.07);border:1px solid rgba(34,197,94,.2);border-radius:10px;padding:12px">
+        <div style="font-size:11px;font-weight:700;color:var(--grn);margin-bottom:8px">✅ Módulos Configurados Automáticamente</div>
+        ${Object.entries(s).map(([k,v])=>`<div style="font-size:11px;padding:3px 0;color:var(--mut2)"><b style="color:var(--txt)">${k}</b>: ${v}</div>`).join('')}
+      </div>
+      <div style="margin-top:10px;font-size:11px;color:var(--mut)">💡 Los cambios se guardaron en config.json. Recarga el panel para ver la configuración actualizada en cada sección.</div>`;
+    toast('🤖 ¡Servidor analizado y configurado!','success');
+  }catch(e){toast('❌ Error: '+e.message,'error');}
+  btn.textContent='🔄 Re-Analizar';btn.disabled=false;
+}
+
 init();
 </script>
 </body>
 {% endif %}
 </html>
+
+
