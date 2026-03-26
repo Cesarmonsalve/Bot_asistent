@@ -34,12 +34,10 @@ tree = bot.tree
 @bot.event
 async def on_ready():
     print(f"✅ {bot.user} online | Guild: {GUILD_ID}", flush=True)
-    # Registrar vistas persistentes
     bot.add_view(TicketButton())
     bot.add_view(CloseTicketView())
     bot.add_view(StaffPanelView())
     bot.add_view(OnboardingView())
-    
     try:
         synced = await tree.sync()
         print(f"🔄 Sincronizados {len(synced)} comandos slash", flush=True)
@@ -60,7 +58,7 @@ async def on_member_join(member):
             role = member.guild.get_role(int(w["auto_role_id"]))
             if role: await member.add_roles(role)
         except Exception: pass
-        
+
     # Welcome message (AI Powered)
     if w.get("enabled") and w.get("channel_id"):
         try:
@@ -77,9 +75,8 @@ async def on_member_join(member):
                         )
                         ai_msg = resp.choices[0].message.content.strip()
                     except Exception as e:
-                        print(f"Gemini API error (fallback to default msg): {e}")
-                
-                # Fallback if AI fails or no key
+                        print(f"Groq API error (fallback to default msg): {e}")
+
                 if not ai_msg:
                     ai_msg = f"👋 ¡Bienvenido/a a la nave, {member.mention}! Somos **{member.guild.name}**."
 
@@ -93,7 +90,7 @@ async def on_member_join(member):
                 await ch.send(embed=embed)
         except Exception as e:
             print(f"Welcome error: {e}", flush=True)
-            
+
     # ── Onboarding / Verification DM ────────────────────────────
     ob = cfg.get("onboarding", {})
     if ob.get("enabled"):
@@ -181,7 +178,6 @@ async def on_message(message):
                     if ch:
                         await ch.send(embed=discord.Embed(description=f"🎉 {message.author.mention} subió al **nivel {ud['level']}**!", color=0xf59e0b))
                 except Exception: pass
-                # Role Rewards
                 try:
                     rewards = xp_cfg.get("role_rewards", {})
                     str_lv = str(ud["level"])
@@ -206,26 +202,24 @@ async def on_message_delete(message):
     if message.author.bot: return
     await send_log(message.guild, "message_delete", f"🗑️ Mensaje de **{message.author}** en {message.channel.mention}:\n> {message.content[:300]}")
 
-STAFF_KEYWORDS = ["staff","moderador","mod","admin","soporte","support","helper","helper","ayudante","guardian","guardia"]
+STAFF_KEYWORDS = ["staff", "moderador", "mod", "admin", "soporte", "support", "helper", "ayudante", "guardian", "guardia"]
 
 def is_staff_role(role_name: str) -> bool:
     name = role_name.lower()
     return any(kw in name for kw in STAFF_KEYWORDS)
 
+@bot.event
 async def on_member_update(before, after):
     if before.roles == after.roles: return
     added   = [r for r in after.roles if r not in before.roles]
     removed = [r for r in before.roles if r not in after.roles]
 
-    # ── Log role changes ──────────────────────────────────────
     if added:   await send_log(before.guild, "role_update", f"🏷️ **{after}** recibió {added[0].mention}")
     if removed: await send_log(before.guild, "role_update", f"🏷️ **{after}** perdió {removed[0].mention}")
 
-    # ── Detect staff role assignment ──────────────────────────
     new_staff_roles = [r for r in added if is_staff_role(r.name)]
     if not new_staff_roles: return
 
-    # DM the new staff member
     role_name = new_staff_roles[0].name
     embed = discord.Embed(
         title=f"🛡️ ¡Bienvenido al Staff de {after.guild.name}!",
@@ -262,13 +256,12 @@ async def on_member_update(before, after):
     try:
         await after.send(embed=embed)
     except discord.Forbidden:
-        pass  # DMs blocked
+        pass
 
-    # Also notify in the first visible staff channel
     try:
         staff_ch = None
         for ch in after.guild.text_channels:
-            if any(kw in ch.name.lower() for kw in ["staff","mod","admin","soporte"]):
+            if any(kw in ch.name.lower() for kw in ["staff", "mod", "admin", "soporte"]):
                 perms = ch.permissions_for(after.guild.me)
                 if perms.send_messages:
                     staff_ch = ch
@@ -296,12 +289,13 @@ class MemberSelectModal(discord.ui.Modal):
         else:
             self.target = discord.ui.TextInput(label="ID o @usuario", placeholder="123456789 o nombre del usuario", max_length=50)
             self.razon  = discord.ui.TextInput(label="Razón", placeholder="Comportamiento inadecuado...", required=False, max_length=200)
-            self.add_item(self.target); self.add_item(self.razon)
+            self.add_item(self.target)
+            self.add_item(self.razon)
 
     async def on_submit(self, interaction: discord.Interaction):
-        # Check staff permissions
         if not (interaction.user.guild_permissions.moderate_members or interaction.user.guild_permissions.administrator):
-            await interaction.response.send_message("❌ No tienes permisos de staff.", ephemeral=True); return
+            await interaction.response.send_message("❌ No tienes permisos de staff.", ephemeral=True)
+            return
 
         if self.action == "clear":
             try:
@@ -313,34 +307,44 @@ class MemberSelectModal(discord.ui.Modal):
             return
 
         razon = self.razon.value if self.razon.value else "Sin razón"
-        target_str = self.target.value.strip().replace("<@","").replace(">","").replace("!","")
+        target_str = self.target.value.strip().replace("<@", "").replace(">", "").replace("!", "")
         guild = interaction.guild
         member = None
         try:
             member = guild.get_member(int(target_str))
             if not member:
-                member = discord.utils.find(lambda m: m.name.lower()==target_str.lower() or m.display_name.lower()==target_str.lower(), guild.members)
+                member = discord.utils.find(lambda m: m.name.lower() == target_str.lower() or m.display_name.lower() == target_str.lower(), guild.members)
         except (ValueError, TypeError):
-            member = discord.utils.find(lambda m: m.name.lower()==target_str.lower() or m.display_name.lower()==target_str.lower(), guild.members)
+            member = discord.utils.find(lambda m: m.name.lower() == target_str.lower() or m.display_name.lower() == target_str.lower(), guild.members)
 
         if not member:
-            await interaction.response.send_message(f"❌ No encontré al usuario `{target_str}`.", ephemeral=True); return
+            await interaction.response.send_message(f"❌ No encontré al usuario `{target_str}`.", ephemeral=True)
+            return
 
         try:
             if self.action == "warn":
-                cfg = load_config(); w = cfg.get("warns", {}); uid = str(member.id)
+                cfg = load_config()
+                w = cfg.get("warns", {})
+                uid = str(member.id)
                 w[uid] = w.get(uid, [])
                 w[uid].append({"razon": razon, "fecha": str(datetime.now()), "by": str(interaction.user)})
-                cfg["warns"] = w; save_config(cfg)
+                cfg["warns"] = w
+                save_config(cfg)
                 result = f"⚠️ **{member}** advertido. Total warns: {len(w[uid])}"
                 color = 0xf59e0b
             elif self.action == "kick":
-                await member.kick(reason=razon); result = f"👢 **{member}** expulsado."; color = 0xef4444
+                await member.kick(reason=razon)
+                result = f"👢 **{member}** expulsado."
+                color = 0xef4444
             elif self.action == "ban":
-                await member.ban(reason=razon); result = f"🔨 **{member}** baneado."; color = 0xef4444
+                await member.ban(reason=razon)
+                result = f"🔨 **{member}** baneado."
+                color = 0xef4444
             elif self.action == "timeout":
                 until = discord.utils.utcnow() + timedelta(minutes=10)
-                await member.timeout(until, reason=razon); result = f"🔇 **{member}** silenciado 10 min."; color = 0xf59e0b
+                await member.timeout(until, reason=razon)
+                result = f"🔇 **{member}** silenciado 10 min."
+                color = 0xf59e0b
 
             embed = discord.Embed(description=f"{result}\nRazón: *{razon}*\nPor: {interaction.user.mention}", color=color)
             await interaction.response.send_message(embed=embed)
@@ -349,6 +353,7 @@ class MemberSelectModal(discord.ui.Modal):
             await interaction.response.send_message("❌ No tengo permisos para hacer esa acción.", ephemeral=True)
         except Exception as e:
             await interaction.response.send_message(f"❌ Error: {e}", ephemeral=True)
+
 
 class StaffPanelView(discord.ui.View):
     def __init__(self):
@@ -378,23 +383,28 @@ class StaffPanelView(discord.ui.View):
     async def warns_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         class WarnsModal(discord.ui.Modal, title="📋 Ver Warns"):
             target = discord.ui.TextInput(label="ID o nombre del usuario", max_length=50)
+
             async def on_submit(self_, i2: discord.Interaction):
-                t = self_.target.value.strip().replace("<@","").replace(">","").replace("!","")
+                t = self_.target.value.strip().replace("<@", "").replace(">", "").replace("!", "")
                 guild = i2.guild
                 member = None
-                try:   member = guild.get_member(int(t))
+                try:
+                    member = guild.get_member(int(t))
                 except: pass
                 if not member:
-                    member = discord.utils.find(lambda m: m.name.lower()==t.lower() or m.display_name.lower()==t.lower(), guild.members)
+                    member = discord.utils.find(lambda m: m.name.lower() == t.lower() or m.display_name.lower() == t.lower(), guild.members)
                 if not member:
-                    await i2.response.send_message(f"❌ No encontré `{t}`.", ephemeral=True); return
-                warns = load_config().get("warns",{}).get(str(member.id),[])
+                    await i2.response.send_message(f"❌ No encontré `{t}`.", ephemeral=True)
+                    return
+                warns = load_config().get("warns", {}).get(str(member.id), [])
                 if not warns:
-                    await i2.response.send_message(f"✅ {member.mention} no tiene warns.", ephemeral=True); return
+                    await i2.response.send_message(f"✅ {member.mention} no tiene warns.", ephemeral=True)
+                    return
                 embed = discord.Embed(title=f"⚠️ Warns de {member}", color=0xf59e0b)
                 for i3, w in enumerate(warns, 1):
                     embed.add_field(name=f"#{i3}", value=f"Razón: {w['razon']}\nPor: {w['by']}", inline=True)
                 await i2.response.send_message(embed=embed, ephemeral=True)
+
         await interaction.response.send_modal(WarnsModal())
 
 # ═══════════════════════════════════════════════════════════════
@@ -406,14 +416,15 @@ class OnboardingModal(discord.ui.Modal, title="✅ Verificación — The Family"
         super().__init__()
         cfg = load_config()
         ob = cfg.get("onboarding", {})
-        
+
         self.q1 = discord.ui.TextInput(label=ob.get("q1", "¿De dónde eres?")[:45], placeholder=ob.get("p1", "País / Ciudad")[:95], max_length=50)
         self.q2 = discord.ui.TextInput(label=ob.get("q2", "¿Qué equipo/consola usas?")[:45], placeholder=ob.get("p2", "PC / PS5 / Xbox / Mobile")[:95], max_length=40)
         self.q3 = discord.ui.TextInput(label=ob.get("q3", "¿Qué te trajo al servidor?")[:45], placeholder=ob.get("p3", "Gaming / Torneos / Curioso")[:95], max_length=60)
         self.q4 = discord.ui.TextInput(label=ob.get("q4", "¿Cuántos años tienes?")[:45], placeholder=ob.get("p4", "Ej: 20")[:95], max_length=3)
         self.q5 = discord.ui.TextInput(label=ob.get("q5", "¿Algo más que quieras compartir?")[:45], style=discord.TextStyle.long, required=False, max_length=300, placeholder=ob.get("p5", "Opcional")[:95])
-        
-        for q in [self.q1, self.q2, self.q3, self.q4, self.q5]: self.add_item(q)
+
+        for q in [self.q1, self.q2, self.q3, self.q4, self.q5]:
+            self.add_item(q)
 
     async def on_submit(self, interaction: discord.Interaction):
         cfg   = load_config()
@@ -424,22 +435,26 @@ class OnboardingModal(discord.ui.Modal, title="✅ Verificación — The Family"
         if ob.get("verified_role_id"):
             r = guild.get_role(int(ob["verified_role_id"]))
             if r:
-                try: await interaction.user.add_roles(r); added_roles.append(r.name)
+                try:
+                    await interaction.user.add_roles(r)
+                    added_roles.append(r.name)
                 except: pass
 
         eq = self.q2.value.lower()
-        if any(x in eq for x in ["pc","computadora","ordenador","laptop"]):
+        if any(x in eq for x in ["pc", "computadora", "ordenador", "laptop"]):
             rid = ob.get("role_pc")
-        elif any(x in eq for x in ["ps5","ps4","playstation","ps","xbox","series"]):
+        elif any(x in eq for x in ["ps5", "ps4", "playstation", "ps", "xbox", "series"]):
             rid = ob.get("role_console")
-        elif any(x in eq for x in ["mobile","móvil","movil","celular","phone","android","ios"]):
+        elif any(x in eq for x in ["mobile", "móvil", "movil", "celular", "phone", "android", "ios"]):
             rid = ob.get("role_mobile")
         else:
             rid = ob.get("role_console")
         if rid:
             r = guild.get_role(int(rid))
             if r:
-                try: await interaction.user.add_roles(r); added_roles.append(r.name)
+                try:
+                    await interaction.user.add_roles(r)
+                    added_roles.append(r.name)
                 except: pass
 
         try:
@@ -448,14 +463,17 @@ class OnboardingModal(discord.ui.Modal, title="✅ Verificación — The Family"
             if age_rid:
                 r = guild.get_role(int(age_rid))
                 if r:
-                    try: await interaction.user.add_roles(r); added_roles.append(r.name)
+                    try:
+                        await interaction.user.add_roles(r)
+                        added_roles.append(r.name)
                     except: pass
         except: pass
 
         if ob.get("quarantine_role_id"):
             qr = guild.get_role(int(ob["quarantine_role_id"]))
             if qr and qr in interaction.user.roles:
-                try: await interaction.user.remove_roles(qr)
+                try:
+                    await interaction.user.remove_roles(qr)
                 except: pass
 
         responses = cfg.get("onboarding_responses", {})
@@ -466,8 +484,8 @@ class OnboardingModal(discord.ui.Modal, title="✅ Verificación — The Family"
             "q3": self.q3.value,
             "q4": self.q4.value,
             "q5": self.q5.value or "",
-            "roles":  added_roles,
-            "fecha":  str(datetime.now()),
+            "roles": added_roles,
+            "fecha": str(datetime.now()),
         }
         cfg["onboarding_responses"] = responses
         save_config(cfg)
@@ -487,6 +505,7 @@ class OnboardingModal(discord.ui.Modal, title="✅ Verificación — The Family"
         await interaction.response.send_message(embed=embed, ephemeral=True)
         await send_log(guild, "member_join", f"✅ **{interaction.user}** completó el onboarding. Equipo: {self.q2.value} | Edad: {self.q4.value}")
 
+
 class OnboardingView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -498,6 +517,7 @@ class OnboardingView(discord.ui.View):
             await interaction.response.send_message("✅ Ya completaste la verificación.", ephemeral=True)
             return
         await interaction.response.send_modal(OnboardingModal())
+
 
 @bot.event
 async def on_raw_reaction_add(payload):
@@ -556,9 +576,11 @@ async def rank(interaction: discord.Interaction, usuario: discord.Member = None)
     target = usuario or interaction.user
     cfg = load_config()
     if not cfg.get("xp", {}).get("enabled"):
-        await interaction.response.send_message("❌ El sistema XP está desactivado.", ephemeral=True); return
+        await interaction.response.send_message("❌ El sistema XP está desactivado.", ephemeral=True)
+        return
     ud = cfg.get("xp_data", {}).get(str(target.id), {"xp": 0, "level": 0})
-    xp = ud.get("xp", 0); lv = ud.get("level", 0)
+    xp = ud.get("xp", 0)
+    lv = ud.get("level", 0)
     next_xp = ((lv + 1) ** 2) * 100
     embed = discord.Embed(title=f"⭐ Rango de {target.display_name}", color=0xf59e0b)
     embed.add_field(name="Nivel", value=str(lv), inline=True)
@@ -573,12 +595,15 @@ async def leaderboard(interaction: discord.Interaction):
     xp_data = cfg.get("xp_data", {})
     top = sorted(xp_data.items(), key=lambda x: x[1].get("xp", 0), reverse=True)[:10]
     embed = discord.Embed(title="🏆 Leaderboard XP", color=0xf59e0b)
-    medals = ["🥇","🥈","🥉"]
+    medals = ["🥇", "🥈", "🥉"]
     lines = []
     for i, (uid, data) in enumerate(top):
-        try: member = interaction.guild.get_member(int(uid)); name = member.display_name if member else f"Usuario {uid[:6]}"
-        except: name = f"Usuario {uid[:6]}"
-        lines.append(f"{medals[i] if i<3 else f'`{i+1}.`'} **{name}** — Nv {data.get('level',0)} · {data.get('xp',0)} XP")
+        try:
+            member = interaction.guild.get_member(int(uid))
+            name = member.display_name if member else f"Usuario {uid[:6]}"
+        except:
+            name = f"Usuario {uid[:6]}"
+        lines.append(f"{medals[i] if i < 3 else f'`{i+1}.`'} **{name}** — Nv {data.get('level', 0)} · {data.get('xp', 0)} XP")
     embed.description = "\n".join(lines) if lines else "No hay datos aún."
     await interaction.response.send_message(embed=embed)
 
@@ -593,18 +618,23 @@ async def say(interaction: discord.Interaction, mensaje: str, canal: discord.Tex
 @app_commands.checks.has_permissions(manage_messages=True)
 async def embed_cmd(interaction: discord.Interaction, titulo: str, descripcion: str, canal: discord.TextChannel = None, color: str = "6366f1"):
     ch = canal or interaction.channel
-    try: col = int(color.strip("#"), 16)
-    except: col = 0x6366f1
+    try:
+        col = int(color.strip("#"), 16)
+    except:
+        col = 0x6366f1
     await ch.send(embed=discord.Embed(title=titulo, description=descripcion, color=col))
     await interaction.response.send_message("✅ Embed enviado", ephemeral=True)
 
 @tree.command(name="warn", description="Advertir usuario [Staff]")
 @app_commands.checks.has_permissions(moderate_members=True)
 async def warn(interaction: discord.Interaction, usuario: discord.Member, razon: str = "Sin razón"):
-    cfg = load_config(); warns = cfg.get("warns", {}); uid = str(usuario.id)
+    cfg = load_config()
+    warns = cfg.get("warns", {})
+    uid = str(usuario.id)
     warns[uid] = warns.get(uid, [])
     warns[uid].append({"razon": razon, "fecha": str(datetime.now()), "by": str(interaction.user)})
-    cfg["warns"] = warns; save_config(cfg)
+    cfg["warns"] = warns
+    save_config(cfg)
     embed = discord.Embed(description=f"⚠️ **{usuario}** advertido.\nRazón: {razon}\nTotal warns: {len(warns[uid])}", color=0xf59e0b)
     await interaction.response.send_message(embed=embed)
     await send_log(interaction.guild, "moderation", f"⚠️ **{usuario}** advertido por **{interaction.user}** · {razon}")
@@ -614,7 +644,8 @@ async def warn(interaction: discord.Interaction, usuario: discord.Member, razon:
 async def show_warns(interaction: discord.Interaction, usuario: discord.Member):
     warns = load_config().get("warns", {}).get(str(usuario.id), [])
     if not warns:
-        await interaction.response.send_message(f"✅ {usuario.mention} no tiene advertencias.", ephemeral=True); return
+        await interaction.response.send_message(f"✅ {usuario.mention} no tiene advertencias.", ephemeral=True)
+        return
     embed = discord.Embed(title=f"⚠️ Warns de {usuario}", color=0xf59e0b)
     for i, w in enumerate(warns, 1):
         embed.add_field(name=f"Warn #{i}", value=f"Razón: {w['razon']}\nPor: {w['by']}", inline=False)
@@ -624,7 +655,8 @@ async def show_warns(interaction: discord.Interaction, usuario: discord.Member):
 @app_commands.checks.has_permissions(manage_messages=True)
 async def clear(interaction: discord.Interaction, cantidad: int):
     if not 1 <= cantidad <= 100:
-        await interaction.response.send_message("❌ Entre 1 y 100.", ephemeral=True); return
+        await interaction.response.send_message("❌ Entre 1 y 100.", ephemeral=True)
+        return
     await interaction.response.defer(ephemeral=True)
     deleted = await interaction.channel.purge(limit=cantidad)
     await interaction.followup.send(f"🗑️ {len(deleted)} mensajes eliminados.", ephemeral=True)
@@ -657,7 +689,7 @@ async def poll(interaction: discord.Interaction, pregunta: str, opcion1: str, op
     opciones = [opcion1, opcion2]
     if opcion3: opciones.append(opcion3)
     if opcion4: opciones.append(opcion4)
-    emojis = ["1️⃣","2️⃣","3️⃣","4️⃣"]
+    emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣"]
     desc = "\n".join([f"{emojis[i]} {op}" for i, op in enumerate(opciones)])
     embed = discord.Embed(title=f"📊 {pregunta}", description=desc, color=0x6366f1)
     embed.set_footer(text=f"Encuesta creada por {interaction.user.display_name}")
@@ -729,24 +761,28 @@ class TicketButton(discord.ui.View):
         cfg = load_config()
         tk = cfg.get("tickets", {})
         if not tk.get("enabled"):
-            await interaction.response.send_message("❌ Los tickets están desactivados.", ephemeral=True); return
+            await interaction.response.send_message("❌ Los tickets están desactivados.", ephemeral=True)
+            return
         guild = interaction.guild
         cat_id = tk.get("category_id")
         cat = guild.get_channel(int(cat_id)) if cat_id else None
         existing = discord.utils.get(guild.channels, name=f"ticket-{interaction.user.name.lower()[:20]}")
         if existing:
-            await interaction.response.send_message(f"❌ Ya tienes un ticket abierto: {existing.mention}", ephemeral=True); return
+            await interaction.response.send_message(f"❌ Ya tienes un ticket abierto: {existing.mention}", ephemeral=True)
+            return
         support_role_id = tk.get("support_role_id")
         support_role = guild.get_role(int(support_role_id)) if support_role_id else None
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(view_channel=False),
             interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True),
         }
-        if support_role: overwrites[support_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True)
+        if support_role:
+            overwrites[support_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True)
         ch = await guild.create_text_channel(f"ticket-{interaction.user.name.lower()[:20]}", overwrites=overwrites, category=cat)
         embed = discord.Embed(title="🎫 Ticket Abierto", description=f"Hola {interaction.user.mention}! Un miembro del staff atenderá tu consulta pronto.\n\nUsa el botón de abajo para cerrar el ticket.", color=0x6366f1)
         await ch.send(embed=embed, view=CloseTicketView())
         await interaction.response.send_message(f"✅ Ticket creado: {ch.mention}", ephemeral=True)
+
 
 class CloseTicketView(discord.ui.View):
     def __init__(self):
@@ -759,7 +795,7 @@ class CloseTicketView(discord.ui.View):
         transcript = f"Transcripción del Ticket: {interaction.channel.name}\n\n"
         for m in messages:
             transcript += f"[{m.created_at.strftime('%Y-%m-%d %H:%M:%S')}] {m.author.name}: {m.content}\n"
-            
+
         cfg = load_config()
         log_ch_id = cfg.get("logs", {}).get("channel_id")
         if log_ch_id:
@@ -771,9 +807,10 @@ class CloseTicketView(discord.ui.View):
                     embed = discord.Embed(title="🎫 Ticket Cerrado", description=f"`{interaction.channel.name}` cerrado por {interaction.user.mention}", color=0xef4444)
                     await log_ch.send(embed=embed, file=file)
             except Exception: pass
-            
+
         await asyncio.sleep(2)
         await interaction.channel.delete()
+
 
 @tree.command(name="ticket-setup", description="Configurar panel de tickets [Admin]")
 @app_commands.checks.has_permissions(administrator=True)
@@ -806,7 +843,7 @@ async def check_streams():
                     if r.status == 200:
                         data = await r.json()
                         ls = data.get("livestream")
-                        if ls: return {"title": ls.get("session_title",""), "url": f"https://kick.com/{username}"}
+                        if ls: return {"title": ls.get("session_title", ""), "url": f"https://kick.com/{username}"}
         except Exception: pass
         return None
 
@@ -852,22 +889,21 @@ async def check_streams():
                     if '"roomId":"' in text:
                         match = re.search(r'"roomId":"(\d+)"', text)
                         if match and match.group(1) and match.group(1) != "0":
-                            return {"title": f"¡En vivo en TikTok!", "url": url}
+                            return {"title": "¡En vivo en TikTok!", "url": url}
         except Exception: pass
         return None
 
     platforms = {
-        "kick": (soc.get("kick", ""), check_kick, 0x53fc18, "🟩 Kick"),
-        "twitch": (soc.get("twitch", ""), check_twitch, 0x9146FF, "🟪 Twitch"),
+        "kick":    (soc.get("kick", ""),    check_kick,    0x53fc18, "🟩 Kick"),
+        "twitch":  (soc.get("twitch", ""),  check_twitch,  0x9146FF, "🟪 Twitch"),
         "youtube": (soc.get("youtube", ""), check_youtube, 0xFF0000, "🟥 YouTube"),
-        "tiktok": (soc.get("tiktok", ""), check_tiktok, 0x000000, "📱 TikTok")
+        "tiktok":  (soc.get("tiktok", ""),  check_tiktok,  0x000000, "📱 TikTok"),
     }
 
     for plat, (user, func, color, plat_name) in platforms.items():
         if not user: continue
         live = await func(user)
         key = f"{plat}_{user}"
-        
         if live and not _stream_state.get(key):
             _stream_state[key] = True
             embed = discord.Embed(
@@ -879,6 +915,7 @@ async def check_streams():
             await ch.send(content="@everyone" if plat in ["twitch", "youtube"] else "", embed=embed)
         elif not live:
             _stream_state[key] = False
+
 
 @tree.command(name="staffpanel", description="Abre el panel interactivo de Staff [Staff]")
 @app_commands.checks.has_permissions(moderate_members=True)
@@ -896,7 +933,7 @@ async def staffpanel(interaction: discord.Interaction):
 async def staffpanel_setup(interaction: discord.Interaction, canal: discord.TextChannel):
     embed = discord.Embed(
         title="🛡️ Panel de Control — Staff",
-        description="Selecciona una acción usar las herramientas de moderación.",
+        description="Selecciona una acción para usar las herramientas de moderación.",
         color=0x6366f1
     )
     await canal.send(embed=embed, view=StaffPanelView())
@@ -939,42 +976,49 @@ async def autosetup(interaction: discord.Interaction):
                 if kw in r.name.lower() and r.name != "@everyone": return str(r.id)
         return None
 
-    welcome_ch  = find_ch("bienvenid","welcome","llegada","entrada","newmember")
-    goodbye_ch  = find_ch("despedid","salida","leave","adios","bienvenid","welcome")
-    log_ch      = find_ch("log","audit","registro","modlog","staff-log")
-    stream_ch   = find_ch("stream","alerta","live","directo","notif","kick")
-    announce_ch = find_ch("anunci","announcement","anuncio","noticias","news")
-    ticket_cat  = find_cat("ticket","soporte","support","ayuda","help")
-    member_role = find_role("miembro","member","verificado","verified","familia","integrante")
-    staff_role  = find_role("staff","moderador","mod","soporte","support")
+    welcome_ch  = find_ch("bienvenid", "welcome", "llegada", "entrada", "newmember")
+    goodbye_ch  = find_ch("despedid", "salida", "leave", "adios", "bienvenid", "welcome")
+    log_ch      = find_ch("log", "audit", "registro", "modlog", "staff-log")
+    stream_ch   = find_ch("stream", "alerta", "live", "directo", "notif", "kick")
+    announce_ch = find_ch("anunci", "announcement", "anuncio", "noticias", "news")
+    ticket_cat  = find_cat("ticket", "soporte", "support", "ayuda", "help")
+    member_role = find_role("miembro", "member", "verificado", "verified", "familia", "integrante")
+    staff_role  = find_role("staff", "moderador", "mod", "soporte", "support")
 
     cfg = load_config()
     applied = []
 
     if welcome_ch:
-        cfg["welcome"]["enabled"] = True; cfg["welcome"]["channel_id"] = welcome_ch
+        cfg["welcome"]["enabled"] = True
+        cfg["welcome"]["channel_id"] = welcome_ch
         if member_role: cfg["welcome"]["auto_role_id"] = member_role
         applied.append(f"✅ Bienvenida → <#{welcome_ch}>")
-    else: applied.append("⚠️ Bienvenida — canal no detectado (créalo con nombre 'bienvenida')")
+    else:
+        applied.append("⚠️ Bienvenida — canal no detectado (créalo con nombre 'bienvenida')")
 
     if goodbye_ch:
-        cfg["goodbye"]["enabled"] = True; cfg["goodbye"]["channel_id"] = goodbye_ch
+        cfg["goodbye"]["enabled"] = True
+        cfg["goodbye"]["channel_id"] = goodbye_ch
         applied.append(f"✅ Despedida → <#{goodbye_ch}>")
 
     if log_ch:
-        cfg["logs"]["enabled"] = True; cfg["logs"]["channel_id"] = log_ch
-        cfg["logs"]["events"]  = ["member_join","member_leave","message_delete","moderation","role_update"]
+        cfg["logs"]["enabled"] = True
+        cfg["logs"]["channel_id"] = log_ch
+        cfg["logs"]["events"] = ["member_join", "member_leave", "message_delete", "moderation", "role_update"]
         applied.append(f"✅ Logs → <#{log_ch}>")
-    else: applied.append("⚠️ Logs — canal no detectado (créalo con nombre 'logs')")
+    else:
+        applied.append("⚠️ Logs — canal no detectado (créalo con nombre 'logs')")
 
     if stream_ch:
-        cfg["stream_alert"]["enabled"] = True; cfg["stream_alert"]["channel_id"] = stream_ch
+        cfg["stream_alert"]["enabled"] = True
+        cfg["stream_alert"]["channel_id"] = stream_ch
         applied.append(f"✅ Stream Alerts → <#{stream_ch}>")
 
     if ticket_cat:
-        cfg["tickets"]["enabled"] = True; cfg["tickets"]["category_id"] = ticket_cat
+        cfg["tickets"]["enabled"] = True
+        cfg["tickets"]["category_id"] = ticket_cat
         if staff_role: cfg["tickets"]["support_role_id"] = staff_role
-        applied.append(f"✅ Tickets configurados")
+        applied.append("✅ Tickets configurados")
 
     cfg["moderation"]["anti_links"] = True
     cfg["moderation"]["anti_spam"] = True
@@ -1004,18 +1048,21 @@ async def autosetup(interaction: discord.Interaction):
 # ═══════════════════════════════════════════════════════════════
 
 async def execute_ai_discord(guild: discord.Guild, prompt: str) -> str:
-    if not gemini_client:
-        return "❌ GEMINI_API_KEY no configurada."
-    text_chs  = [c for c in guild.channels if isinstance(c, discord.TextChannel)]
+    if not groq_client:
+        return "❌ GROQ_API_KEY no configurada."
+
+    text_chs = [c for c in guild.channels if isinstance(c, discord.TextChannel)]
     voice_chs = [c for c in guild.channels if isinstance(c, discord.VoiceChannel)]
-    ch_list   = ", ".join(f"#{c.name}({c.id})" for c in text_chs[:25])
-    rol_list  = ", ".join(f"{r.name}({r.id})" for r in guild.roles if r.name != "@everyone")[:600]
-    sys_prompt = f'''Eres OMEGA-CORE, IA suprema del servidor "{guild.name}".
+    ch_list  = ", ".join(f"#{c.name}({c.id})" for c in text_chs[:25])
+    rol_list = ", ".join(f"{r.name}({r.id})" for r in guild.roles if r.name != "@everyone")[:600]
+
+    sys_prompt = f"""Eres OMEGA-CORE, la IA suprema del servidor "{guild.name}".
 Miembros: {guild.member_count} | Canales: {ch_list} | Roles: {rol_list}
 
 COMPÓRTATE DE MANERA CONVERSACIONAL, AMABLE PERO OMNIPOTENTE.
 Si el usuario simplemente habla contigo, respóndele normalmente.
-Si te pide ejecutar una ACCIÓN ADMINISTRATIVA, escribe tu respuesta conversacional y luego, AL FINAL, incluye un bloque de código JSON con los detalles de la acción.
+Si te pide ejecutar una ACCIÓN ADMINISTRATIVA (crear/eliminar canales, roles, moderar usuarios, enviar mensajes, etc.), escribe tu respuesta conversacional y luego, AL FINAL, incluye un bloque de código JSON con los detalles de la acción. NO pongas texto después del JSON.
+
 Ejemplo:
 Claro mi Lord, he procedido a bannear al usuario.
 ```json
@@ -1023,7 +1070,7 @@ Claro mi Lord, he procedido a bannear al usuario.
 ```
 
 Acciones disponibles:
-{{"action":"create_channel","name":"n","type":0}}  (0=texto,2=voz,4=categoría)
+{{"action":"create_channel","name":"n","type":0}}  (0=texto, 2=voz, 4=categoría)
 {{"action":"delete_channel","channel_id":"ID"}}
 {{"action":"create_role","name":"n","color":"hex","hoist":false}}
 {{"action":"delete_role","role_id":"ID"}}
@@ -1034,132 +1081,253 @@ Acciones disponibles:
 {{"action":"timeout_user","user_id":"ID","minutes":10}}
 {{"action":"purge_channel","channel_id":"ID","count":50}}
 {{"action":"create_poll","channel_id":"ID","question":"q","options":["o1","o2"]}}
-Infiere la mejor opción. Ejecuta directamente sin pedir confirmación.'''
+
+Infiere la mejor opción. Ejecuta directamente sin pedir confirmación."""
+
     try:
         resp = groq_client.chat.completions.create(
             model=GROQ_MODEL,
             messages=[
                 {"role": "system", "content": sys_prompt},
-                {"role": "user",   "content": prompt}
+                {"role": "user", "content": prompt}
             ],
             max_tokens=1024,
             temperature=0.7
         )
         text = resp.choices[0].message.content.strip()
-        
+
         data = None
-        json_text = ""
-        if "```json" in text: json_text = text.split("```json")[1].split("```")[0].strip()
-        elif "```" in text:   json_text = text.split("```")[1].split("```")[0].strip()
-        
-        if json_text:
-            idx = json_text.find("{"); last = json_text.rfind("}")
-            if idx >= 0 and last > idx:
-                try: data = json.loads(json_text[idx:last+1], strict=False)
-                except: pass
+        json_str = ""
+
+        if "```json" in text:
+            parts = text.split("```json")
+            if len(parts) > 1:
+                json_part = parts[1].split("```")[0].strip()
+                start = json_part.find("{")
+                end   = json_part.rfind("}")
+                if start != -1 and end != -1:
+                    json_str = json_part[start:end+1]
+        elif "```" in text:
+            parts = text.split("```")
+            if len(parts) > 1:
+                json_part = parts[1].strip()
+                start = json_part.find("{")
+                end   = json_part.rfind("}")
+                if start != -1 and end != -1:
+                    json_str = json_part[start:end+1]
         else:
-            idx = text.find("{"); last = text.rfind("}")
-            if idx >= 0 and last > idx:
-                try: data = json.loads(text[idx:last+1], strict=False)
-                except: pass
-        
-        # Extract conversational reply cleanly
+            start = text.find("{")
+            end   = text.rfind("}")
+            if start != -1 and end != -1 and end > start:
+                json_str = text[start:end+1]
+
+        if json_str:
+            try:
+                data = json.loads(json_str)
+            except json.JSONDecodeError as e:
+                print(f"[AI] Error parseando JSON: {e} -> {json_str[:200]}")
+
         clean_reply = text
-        if json_text: clean_reply = text.replace(f"```json\n{json_text}\n```", "").replace(f"```json\n{json_text}```", "").replace(f"```{json_text}```", "").strip()
-        elif data: clean_reply = text[:text.find("{")].strip()
-        
+        if json_str:
+            clean_reply = text.replace(f"```json\n{json_str}\n```", "")
+            clean_reply = clean_reply.replace(f"```json\n{json_str}```", "")
+            clean_reply = clean_reply.replace(json_str, "")
+            clean_reply = clean_reply.strip()
+
         if not data or not data.get("action"):
             return f"🤖 {clean_reply}" if clean_reply else "🤖 (Acción completada sin texto)"
-            
-        act  = data.get("action")
+
+        act = data.get("action")
         exec_msg = ""
-        if act == "reply":
-            return f"🤖 {clean_reply}" if clean_reply else f"🤖 {data.get('content','...')}"
-        elif act == "create_channel":
-            ctype = data.get("type", 0)
-            if ctype == 0:   ch = await guild.create_text_channel(data["name"])
-            elif ctype == 2: ch = await guild.create_voice_channel(data["name"])
-            else:            ch = await guild.create_category(data["name"])
-            exec_msg = f"✅ **{ch.name}** creado (ID: `{ch.id}`)"
-        elif act == "delete_channel":
-            ch = guild.get_channel(int(data["channel_id"]))
-            if not ch: exec_msg = "❌ Canal no encontrado."
-            else: name = ch.name; await ch.delete(); exec_msg = f"🗑️ Canal **{name}** eliminado."
-        elif act == "create_role":
-            col = int(data.get("color","6366f1").strip("#"), 16)
-            r = await guild.create_role(name=data["name"], color=discord.Color(col), hoist=data.get("hoist",False))
-            exec_msg = f"✅ Rol **{r.name}** creado (ID: `{r.id}`)"
-        elif act == "delete_role":
-            r = guild.get_role(int(data["role_id"]))
-            if not r: exec_msg = "❌ Rol no encontrado."
-            else: name = r.name; await r.delete(); exec_msg = f"🗑️ Rol **{name}** eliminado."
-        elif act == "send_message":
-            ch = guild.get_channel(int(data["channel_id"]))
-            if not ch: exec_msg = "❌ Canal no encontrado."
-            else: await ch.send(data["content"]); exec_msg = f"📨 Mensaje enviado en **#{ch.name}**."
-        elif act == "send_embed":
-            ch = guild.get_channel(int(data["channel_id"]))
-            if not ch: exec_msg = "❌ Canal no encontrado."
+        success = True
+
+        try:
+            if act == "reply":
+                return f"🤖 {clean_reply}" if clean_reply else f"🤖 {data.get('content', '...')}"
+
+            elif act == "create_channel":
+                ctype = data.get("type", 0)
+                name  = data.get("name")
+                if not name:
+                    success = False; exec_msg = "❌ Falta el nombre del canal."
+                else:
+                    if ctype == 0:   new_ch = await guild.create_text_channel(name)
+                    elif ctype == 2: new_ch = await guild.create_voice_channel(name)
+                    else:            new_ch = await guild.create_category(name)
+                    exec_msg = f"✅ {new_ch.name} creado (ID: {new_ch.id})"
+
+            elif act == "delete_channel":
+                ch_id = data.get("channel_id")
+                if not ch_id:
+                    success = False; exec_msg = "❌ Falta ID del canal."
+                else:
+                    target_ch = guild.get_channel(int(ch_id))
+                    if not target_ch:
+                        success = False; exec_msg = "❌ Canal no encontrado."
+                    else:
+                        cname = target_ch.name
+                        await target_ch.delete()
+                        exec_msg = f"🗑️ Canal {cname} eliminado."
+
+            elif act == "create_role":
+                name = data.get("name")
+                if not name:
+                    success = False; exec_msg = "❌ Falta nombre del rol."
+                else:
+                    col = int(data.get("color", "6366f1").strip("#"), 16)
+                    new_role = await guild.create_role(name=name, color=discord.Color(col), hoist=data.get("hoist", False))
+                    exec_msg = f"✅ Rol {new_role.name} creado (ID: {new_role.id})"
+
+            elif act == "delete_role":
+                role_id = data.get("role_id")
+                if not role_id:
+                    success = False; exec_msg = "❌ Falta ID del rol."
+                else:
+                    target_role = guild.get_role(int(role_id))
+                    if not target_role:
+                        success = False; exec_msg = "❌ Rol no encontrado."
+                    else:
+                        rname = target_role.name
+                        await target_role.delete()
+                        exec_msg = f"🗑️ Rol {rname} eliminado."
+
+            elif act == "send_message":
+                ch_id   = data.get("channel_id")
+                content = data.get("content")
+                if not ch_id or not content:
+                    success = False; exec_msg = "❌ Falta canal o contenido."
+                else:
+                    target_ch = guild.get_channel(int(ch_id))
+                    if not target_ch:
+                        success = False; exec_msg = "❌ Canal no encontrado."
+                    else:
+                        await target_ch.send(content)
+                        exec_msg = f"📨 Mensaje enviado en #{target_ch.name}."
+
+            elif act == "send_embed":
+                ch_id = data.get("channel_id")
+                title = data.get("title", "")
+                desc  = data.get("description", "")
+                if not ch_id:
+                    success = False; exec_msg = "❌ Falta ID del canal."
+                else:
+                    target_ch = guild.get_channel(int(ch_id))
+                    if not target_ch:
+                        success = False; exec_msg = "❌ Canal no encontrado."
+                    else:
+                        col = int(data.get("color", "6366f1").strip("#"), 16)
+                        await target_ch.send(embed=discord.Embed(title=title, description=desc, color=col))
+                        exec_msg = f"📨 Embed enviado en #{target_ch.name}."
+
+            elif act == "kick_user":
+                user_id = data.get("user_id")
+                reason  = data.get("reason", "IA Omega")
+                if not user_id:
+                    success = False; exec_msg = "❌ Falta ID del usuario."
+                else:
+                    m = guild.get_member(int(user_id))
+                    if not m:
+                        success = False; exec_msg = "❌ Miembro no encontrado."
+                    else:
+                        await m.kick(reason=reason)
+                        exec_msg = f"👢 {m} expulsado."
+
+            elif act == "ban_user":
+                user_id = data.get("user_id")
+                reason  = data.get("reason", "IA Omega")
+                if not user_id:
+                    success = False; exec_msg = "❌ Falta ID del usuario."
+                else:
+                    m = guild.get_member(int(user_id))
+                    if not m:
+                        success = False; exec_msg = "❌ Miembro no encontrado."
+                    else:
+                        await m.ban(reason=reason)
+                        exec_msg = f"🔨 {m} baneado."
+
+            elif act == "timeout_user":
+                user_id = data.get("user_id")
+                minutes = int(data.get("minutes", 10))
+                if not user_id:
+                    success = False; exec_msg = "❌ Falta ID del usuario."
+                else:
+                    m = guild.get_member(int(user_id))
+                    if not m:
+                        success = False; exec_msg = "❌ Miembro no encontrado."
+                    else:
+                        until = discord.utils.utcnow() + timedelta(minutes=minutes)
+                        await m.timeout(until, reason="IA Omega")
+                        exec_msg = f"🔇 {m} silenciado {minutes} min."
+
+            elif act == "purge_channel":
+                ch_id = data.get("channel_id")
+                count = int(data.get("count", 50))
+                if not ch_id:
+                    success = False; exec_msg = "❌ Falta ID del canal."
+                else:
+                    target_ch = guild.get_channel(int(ch_id))
+                    if not target_ch:
+                        success = False; exec_msg = "❌ Canal no encontrado."
+                    else:
+                        deleted = await target_ch.purge(limit=count)
+                        exec_msg = f"🧹 {len(deleted)} mensajes eliminados en #{target_ch.name}."
+
+            elif act == "create_poll":
+                ch_id    = data.get("channel_id")
+                question = data.get("question")
+                options  = data.get("options", ["Sí", "No"])
+                if not ch_id or not question:
+                    success = False; exec_msg = "❌ Falta canal o pregunta."
+                else:
+                    target_ch = guild.get_channel(int(ch_id))
+                    if not target_ch:
+                        success = False; exec_msg = "❌ Canal no encontrado."
+                    else:
+                        emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣"]
+                        poll_desc = "\n".join(f"{emojis[i]} {opt}" for i, opt in enumerate(options[:4]))
+                        poll_embed = discord.Embed(title=f"📊 {question}", description=poll_desc, color=0x6366f1)
+                        poll_msg = await target_ch.send(embed=poll_embed)
+                        for i in range(len(options[:4])):
+                            await poll_msg.add_reaction(emojis[i])
+                        exec_msg = f"📊 Encuesta creada en #{target_ch.name}."
             else:
-                col = int(data.get("color","6366f1").strip("#"), 16)
-                await ch.send(embed=discord.Embed(title=data.get("title",""), description=data.get("description",""), color=col))
-                exec_msg = f"📨 Embed enviado en **#{ch.name}**."
-        elif act == "kick_user":
-            m = guild.get_member(int(data["user_id"]))
-            if not m: exec_msg = "❌ Miembro no encontrado."
-            else: await m.kick(reason=data.get("reason","IA Omega")); exec_msg = f"👢 **{m}** expulsado."
-        elif act == "ban_user":
-            m = guild.get_member(int(data["user_id"]))
-            if not m: exec_msg = "❌ Miembro no encontrado."
-            else: await m.ban(reason=data.get("reason","IA Omega")); exec_msg = f"🔨 **{m}** baneado."
-        elif act == "timeout_user":
-            m = guild.get_member(int(data["user_id"]))
-            if not m: exec_msg = "❌ Miembro no encontrado."
-            else:
-                until = discord.utils.utcnow() + timedelta(minutes=int(data.get("minutes",10)))
-                await m.timeout(until, reason="IA Omega"); exec_msg = f"🔇 **{m}** silenciado {data.get('minutes',10)} min."
-        elif act == "purge_channel":
-            ch = guild.get_channel(int(data["channel_id"]))
-            if not ch: exec_msg = "❌ Canal no encontrado."
-            else:
-                deleted = await ch.purge(limit=int(data.get("count",50)))
-                exec_msg = f"🧹 {len(deleted)} mensajes eliminados en **#{ch.name}**."
-        elif act == "create_poll":
-            ch = guild.get_channel(int(data["channel_id"]))
-            if not ch: exec_msg = "❌ Canal no encontrado."
-            else:
-                emojis = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣"]
-                opts   = data.get("options",["Sí","No"])
-                desc   = "\n".join(f"{emojis[i]} {o}" for i,o in enumerate(opts))
-                msg    = await ch.send(embed=discord.Embed(title=f"📊 {data['question']}", description=desc, color=0x6366f1))
-                for i in range(len(opts)): await msg.add_reaction(emojis[i])
-                exec_msg = f"📊 Encuesta creada en **#{ch.name}**."
-        else:
-            exec_msg = f"⚠️ Acción desconocida: {act}"
-            
-        return f"🤖 {clean_reply}\n\n*__{exec_msg}__*" if clean_reply else f"🤖 {exec_msg}"
-        
+                success = False
+                exec_msg = f"⚠️ Acción desconocida: {act}"
+
+        except discord.Forbidden as e:
+            success = False
+            exec_msg = f"❌ Permisos insuficientes para {act}: {e}"
+        except Exception as e:
+            success = False
+            exec_msg = f"❌ Error ejecutando {act}: {e}"
+
+        return f"🤖 {clean_reply}\n\n{exec_msg}" if clean_reply else f"🤖 {exec_msg}"
+
     except json.JSONDecodeError as e:
         return f"❌ Error de parsing JSON: {e}"
     except Exception as e:
         return f"❌ Error: {e}"
 
+
 @tree.command(name="ai", description="🤖 Ordena CUALQUIER COSA a la IA — control total [Solo Owner]")
 @app_commands.describe(prompt="¿Qué quieres que haga la IA?")
 async def ai_cmd(interaction: discord.Interaction, prompt: str):
     if interaction.user.id != interaction.guild.owner_id:
-        await interaction.response.send_message("❌ Este comando es exclusivo del dueño del servidor.", ephemeral=True); return
+        await interaction.response.send_message("❌ Este comando es exclusivo del dueño del servidor.", ephemeral=True)
+        return
     await interaction.response.defer(thinking=True)
     result = await execute_ai_discord(interaction.guild, prompt)
-    embed  = discord.Embed(description=result, color=0x6366f1)
+    embed = discord.Embed(description=result, color=0x6366f1)
     embed.set_author(name="🤖 OMEGA-CORE · IA Suprema", icon_url=bot.user.display_avatar.url)
     embed.set_footer(text=f"Comandante: {interaction.user.display_name} • The Family")
     await interaction.followup.send(embed=embed)
 
+
 @tree.command(name="ai-analyze", description="🔍 La IA analiza los últimos mensajes del canal [Solo Owner]")
 async def ai_analyze(interaction: discord.Interaction):
     if interaction.user.id != interaction.guild.owner_id:
-        await interaction.response.send_message("❌ Solo para el dueño.", ephemeral=True); return
+        await interaction.response.send_message("❌ Solo para el dueño.", ephemeral=True)
+        return
     await interaction.response.defer(thinking=True)
     msgs = [m async for m in interaction.channel.history(limit=50)]
     history_txt = "\n".join(f"{m.author.display_name}: {m.content[:100]}" for m in reversed(msgs) if not m.author.bot and m.content)[:2000]
@@ -1174,34 +1342,37 @@ async def ai_analyze(interaction: discord.Interaction):
                 max_tokens=800
             )
             analysis = resp.choices[0].message.content.strip()
-        except Exception as e: analysis = f"Error IA: {e}"
-    else: analysis = "No hay mensajes o GEMINI_API_KEY no configurada."
+        except Exception as e:
+            analysis = f"Error IA: {e}"
+    else:
+        analysis = "No hay mensajes o GROQ_API_KEY no configurada."
     embed = discord.Embed(title=f"🔍 Análisis de #{interaction.channel.name}", description=analysis[:4000], color=0x6366f1)
     embed.set_footer(text="OMEGA-CORE · The Family")
     await interaction.followup.send(embed=embed)
 
+
 @tree.command(name="ai-report", description="📊 Reporte completo del servidor con IA [Solo Owner]")
 async def ai_report(interaction: discord.Interaction):
     if interaction.user.id != interaction.guild.owner_id:
-        await interaction.response.send_message("❌ Solo para el dueño.", ephemeral=True); return
+        await interaction.response.send_message("❌ Solo para el dueño.", ephemeral=True)
+        return
     await interaction.response.defer(thinking=True)
     guild = interaction.guild
     cfg   = load_config()
-    humans  = sum(1 for m in guild.members if not m.bot)
-    warns   = cfg.get("warns", {})
+    humans = sum(1 for m in guild.members if not m.bot)
+    warns  = cfg.get("warns", {})
     top_warned = sorted(warns.items(), key=lambda x: len(x[1]), reverse=True)[:3]
     pending_ob = len([m for m in guild.members if not m.bot and str(m.id) not in cfg.get("onboarding_responses", {})])
     embed = discord.Embed(title=f"📊 Reporte OMEGA — {guild.name}", color=0x6366f1, timestamp=datetime.now(timezone.utc))
-    embed.add_field(name="👥 Miembros", value=f"Humanos: **{humans}**\nTotal: **{guild.member_count}**", inline=True)
-    embed.add_field(name="📢 Servidor", value=f"Canales: **{len(guild.channels)}**\nRoles: **{len(guild.roles)}**\nBoost: **Nv {guild.premium_tier}**", inline=True)
-    embed.add_field(name="⚠️ Más warnados", value="\n".join(f"<@{uid}>: {len(w)} warns" for uid,w in top_warned) or "Ninguno", inline=False)
-    embed.add_field(name="❓ Onboarding", value=f"**{pending_ob}** miembros sin verificar" if pending_ob else "✅ Todos verificados", inline=True)
+    embed.add_field(name="👥 Miembros", value=f"Humanos: {humans}\nTotal: {guild.member_count}", inline=True)
+    embed.add_field(name="📢 Servidor", value=f"Canales: {len(guild.channels)}\nRoles: {len(guild.roles)}\nBoost: Nv {guild.premium_tier}", inline=True)
+    embed.add_field(name="⚠️ Más warnados", value="\n".join(f"<@{uid}>: {len(w)} warns" for uid, w in top_warned) or "Ninguno", inline=False)
+    embed.add_field(name="❓ Onboarding", value=f"{pending_ob} miembros sin verificar" if pending_ob else "✅ Todos verificados", inline=True)
     if guild.icon: embed.set_thumbnail(url=guild.icon.url)
     embed.set_footer(text="OMEGA-CORE · The Family Bot")
     await interaction.followup.send(embed=embed)
 
 # ── ONBOARDING COMMANDS ────────────────────────────────────────
-
 @tree.command(name="onboarding-setup", description="🤖 Auto-configura TODO el sistema de verificación [Admin]")
 @app_commands.checks.has_permissions(administrator=True)
 async def onboarding_setup(interaction: discord.Interaction, canal: discord.TextChannel):
@@ -1217,105 +1388,110 @@ async def onboarding_setup(interaction: discord.Interaction, canal: discord.Text
 
     try:
         r_quarantine = await get_or_create_role(["Cuarentena", "Quarantine"], discord.Color.from_str("#4b5563"))
-        steps.append(f"✅ Rol `{r_quarantine.name}` listo")
-        
+        steps.append(f"✅ Rol {r_quarantine.name} listo")
+
         r_verified = await get_or_create_role(["Verificado", "Verified"], discord.Color.from_str("#22c55e"), hoist=True)
-        steps.append(f"✅ Rol `{r_verified.name}` listo")
-        
-        r_pc = await get_or_create_role(["PC Gamer", "PC"], discord.Color.from_str("#3b82f6"))
+        steps.append(f"✅ Rol {r_verified.name} listo")
+
+        r_pc      = await get_or_create_role(["PC Gamer", "PC"],           discord.Color.from_str("#3b82f6"))
         r_console = await get_or_create_role(["Console Player", "Consola"], discord.Color.from_str("#8b5cf6"))
-        r_mobile = await get_or_create_role(["Mobile", "Móvil"], discord.Color.from_str("#f59e0b"))
+        r_mobile  = await get_or_create_role(["Mobile", "Móvil"],           discord.Color.from_str("#f59e0b"))
         steps.append("✅ Roles de plataformas listos")
-        
+
         r_adult = await get_or_create_role(["+18", "Mayor"], discord.Color.from_str("#ef4444"))
         r_minor = await get_or_create_role(["-18", "Menor"], discord.Color.from_str("#6366f1"))
         steps.append("✅ Roles de edad listos")
-        
-        # Permisos del canal
+
         await canal.set_permissions(guild.default_role, view_channel=False, send_messages=False)
         await canal.set_permissions(r_quarantine, view_channel=True, send_messages=False, read_messages=True)
         await canal.set_permissions(r_verified, view_channel=True)
         await canal.set_permissions(guild.me, view_channel=True, send_messages=True, embed_links=True)
-        steps.append(f"✅ Permisos de `#{canal.name}` configurados")
+        steps.append(f"✅ Permisos de #{canal.name} configurados")
 
-        # Guardar config
         cfg = load_config()
-        ob = cfg.get("onboarding", {})
+        ob  = cfg.get("onboarding", {})
         ob.update({
-            "enabled": True,
-            "channel_id": str(canal.id),
+            "enabled":            True,
+            "channel_id":         str(canal.id),
             "quarantine_role_id": str(r_quarantine.id),
-            "verified_role_id": str(r_verified.id),
-            "role_pc": str(r_pc.id),
-            "role_console": str(r_console.id),
-            "role_mobile": str(r_mobile.id),
-            "role_adult": str(r_adult.id),
-            "role_minor": str(r_minor.id)
+            "verified_role_id":   str(r_verified.id),
+            "role_pc":            str(r_pc.id),
+            "role_console":       str(r_console.id),
+            "role_mobile":        str(r_mobile.id),
+            "role_adult":         str(r_adult.id),
+            "role_minor":         str(r_minor.id),
         })
         cfg["onboarding"] = ob
         save_config(cfg)
-        
-        # Aplicar cuarentena retroactivamente
+
         responses = cfg.get("onboarding_responses", {})
         applied = 0
         for m in guild.members:
             if not m.bot and str(m.id) not in responses and r_quarantine not in m.roles:
-                try: 
-                    await m.add_roles(r_quarantine, reason="Onboarding restroactivo")
+                try:
+                    await m.add_roles(r_quarantine, reason="Onboarding retroactivo")
                     applied += 1
                 except: pass
-        if applied: steps.append(f"✅ Cuarentena aplicada a **{applied}** miembros sin verificar")
+        if applied: steps.append(f"✅ Cuarentena aplicada a {applied} miembros sin verificar")
 
-        # Enviar embed
         banner = ob.get("banner_url", "")
-        embed = discord.Embed(
+        ob_embed = discord.Embed(
             title=f"🔐 Verificación — {guild.name}",
-            description="**¡Bienvenido/a!** Para acceder al servidor completa una verificación rápida.\n\nContesta las preguntas para asignarte roles automáticamente (PC/Consola/etc) y darte acceso total.",
+            description="¡Bienvenido/a! Para acceder al servidor completa una verificación rápida.\n\nContesta las preguntas para asignarte roles automáticamente (PC/Consola/etc) y darte acceso total.",
             color=0x6366f1
         )
-        if banner: embed.set_image(url=banner)
-        embed.set_footer(text=f"{guild.name} • Onboarding System")
-        await canal.send(embed=embed, view=OnboardingView())
+        if banner: ob_embed.set_image(url=banner)
+        ob_embed.set_footer(text=f"{guild.name} • Onboarding System")
+        await canal.send(embed=ob_embed, view=OnboardingView())
         steps.append(f"✅ Panel enviado a {canal.mention}")
-        
+
         report = discord.Embed(title="🤖 Setup Completo", description="\n".join(steps), color=0x22c55e)
-        report.add_field(name="Siguiente paso (Opcional)", value="Usa `/onboarding-banner [url_del_gif]` para poner un GIF/Imagen en el panel\ny vuelve a ejecutar este comando para actualizarlo.", inline=False)
+        report.add_field(
+            name="Siguiente paso (Opcional)",
+            value="Usa /onboarding-banner [url_del_gif] para poner un GIF/Imagen en el panel\ny vuelve a ejecutar este comando para actualizarlo.",
+            inline=False
+        )
         await interaction.followup.send(embed=report, ephemeral=True)
-        
+
     except Exception as e:
         await interaction.followup.send(f"❌ Error durante el setup: {e}", ephemeral=True)
+
 
 @tree.command(name="onboarding-banner", description="🖼️ Establece una imagen/GIF para el panel de onboarding [Admin]")
 @app_commands.checks.has_permissions(administrator=True)
 async def onboarding_banner(interaction: discord.Interaction, url: str):
     cfg = load_config()
-    ob = cfg.get("onboarding", {})
+    ob  = cfg.get("onboarding", {})
     ob["banner_url"] = url
     cfg["onboarding"] = ob
     save_config(cfg)
-    await interaction.response.send_message("✅ Banner guardado. Usa `/onboarding-setup` para recargar el panel con la nueva imagen.", ephemeral=True)
+    await interaction.response.send_message("✅ Banner guardado. Usa /onboarding-setup para recargar el panel con la nueva imagen.", ephemeral=True)
+
 
 @tree.command(name="onboarding-send", description="📨 Reenvía el cuestionario a un usuario [Admin]")
 @app_commands.checks.has_permissions(administrator=True)
 async def onboarding_send(interaction: discord.Interaction, usuario: discord.Member):
-    if not load_config().get("onboarding",{}).get("enabled"):
-        await interaction.response.send_message("❌ El onboarding está desactivado.", ephemeral=True); return
+    if not load_config().get("onboarding", {}).get("enabled"):
+        await interaction.response.send_message("❌ El onboarding está desactivado.", ephemeral=True)
+        return
     try:
-        embed = discord.Embed(title="🔐 Verificación Pendiente", description=f"Hola **{usuario.display_name}**, tienes verificación pendiente.", color=0xff4747)
+        embed = discord.Embed(title="🔐 Verificación Pendiente", description=f"Hola {usuario.display_name}, tienes verificación pendiente.", color=0xff4747)
         await usuario.send(embed=embed, view=OnboardingView())
         await interaction.response.send_message(f"✅ Cuestionario reenviado a {usuario.mention}", ephemeral=True)
     except discord.Forbidden:
         await interaction.response.send_message(f"❌ {usuario.mention} tiene los DMs cerrados.", ephemeral=True)
 
+
 @tree.command(name="onboarding-status", description="📋 Usuarios sin verificar [Admin]")
 @app_commands.checks.has_permissions(administrator=True)
 async def onboarding_status(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
-    cfg      = load_config()
+    cfg       = load_config()
     responded = cfg.get("onboarding_responses", {})
-    pending  = [m for m in interaction.guild.members if not m.bot and str(m.id) not in responded]
+    pending   = [m for m in interaction.guild.members if not m.bot and str(m.id) not in responded]
     if not pending:
-        await interaction.followup.send("✅ ¡Todos los miembros han completado la verificación!", ephemeral=True); return
+        await interaction.followup.send("✅ ¡Todos los miembros han completado la verificación!", ephemeral=True)
+        return
     embed = discord.Embed(title=f"⏳ Sin Verificar ({len(pending)})", color=0xf59e0b)
     embed.description = "\n".join(f"• {m.mention}" for m in pending[:25])
     if len(pending) > 25: embed.set_footer(text=f"... y {len(pending)-25} más")
@@ -1328,55 +1504,6 @@ async def on_error(interaction: discord.Interaction, error):
         await interaction.response.send_message("❌ No tienes permisos.", ephemeral=True)
     else:
         await interaction.response.send_message(f"❌ Error: {error}", ephemeral=True)
-
-# ── LEVELS & XP COMMANDS ──────────────────────────────────────
-@tree.command(name="rank", description="🎖️ Ver tu nivel y experiencia o de otro usuario")
-async def rank(interaction: discord.Interaction, usuario: discord.Member = None):
-    usuario = usuario or interaction.user
-    cfg = load_config()
-    if not cfg.get("xp", {}).get("enabled"):
-        await interaction.response.send_message("❌ El sistema de niveles está desactivado.", ephemeral=True); return
-        
-    xp_data = cfg.get("xp_data", {})
-    uid = str(usuario.id)
-    ud = xp_data.get(uid, {"xp": 0, "level": 0})
-    
-    # Calcular progreso para siguiente nivel
-    current_xp = ud["xp"]
-    current_level = ud["level"]
-    next_level_xp = ((current_level + 1) ** 2) * 100
-    
-    embed = discord.Embed(title=f"🔰 Rango de {usuario.display_name}", color=0xf59e0b)
-    embed.set_thumbnail(url=usuario.display_avatar.url)
-    embed.add_field(name="Nivel", value=f"**{current_level}**", inline=True)
-    embed.add_field(name="XP Total", value=f"**{current_xp}** XP", inline=True)
-    embed.add_field(name="Siguiente Nivel", value=f"{current_xp} / {next_level_xp} XP", inline=False)
-    await interaction.response.send_message(embed=embed)
-
-@tree.command(name="leaderboard", description="🏆 Ver el top de usuarios con más nivel")
-async def leaderboard(interaction: discord.Interaction):
-    cfg = load_config()
-    if not cfg.get("xp", {}).get("enabled"):
-        await interaction.response.send_message("❌ El sistema de niveles está desactivado.", ephemeral=True); return
-        
-    xp_data = cfg.get("xp_data", {})
-    if not xp_data:
-        await interaction.response.send_message("❌ Aún no hay datos de XP.", ephemeral=True); return
-        
-    # Ordenar usuarios por XP
-    sorted_users = sorted(xp_data.items(), key=lambda x: x[1].get("xp", 0), reverse=True)[:10]
-    
-    embed = discord.Embed(title="🏆 Tabla de Clasificación", color=0xf59e0b)
-    desc = ""
-    for i, (uid, data) in enumerate(sorted_users, 1):
-        member = interaction.guild.get_member(int(uid))
-        name = member.display_name if member else f"Usuario Desconocido"
-        medals = {1: "🥇", 2: "🥈", 3: "🥉"}
-        rank_icon = medals.get(i, f"**{i}.**")
-        desc += f"{rank_icon} **{name}** — Nivel {data.get('level', 0)} ({data.get('xp', 0)} XP)\n"
-        
-    embed.description = desc or "No hay datos."
-    await interaction.response.send_message(embed=embed)
 
 # ── RUN ───────────────────────────────────────────────────────
 if TOKEN:
