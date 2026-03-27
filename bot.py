@@ -4,6 +4,9 @@ from discord import app_commands
 import json, os, asyncio, aiohttp, re, random
 from datetime import datetime, timedelta, timezone
 from groq import AsyncGroq
+import psycopg2
+from psycopg2.extras import Json
+import threading
 
 TOKEN    = (os.environ.get("BOT_TOKEN") or "").strip()
 GUILD_ID = int((os.environ.get("GUILD_ID") or "0").strip())
@@ -16,14 +19,87 @@ if GROQ_KEY:
     groq_client   = AsyncGroq(api_key=GROQ_KEY)
     gemini_client = groq_client
 
-# ── CONFIG ────────────────────────────────────────────────────
-def load_config():
+# ── CONFIG (POSTGRESQL CACHED) ────────────────────────────────
+DB_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:yOHxBzTUYRURlaitnMRlweuVzYlRBbUC@postgres.railway.internal:5432/railway")
+
+BOT_CONFIG_CACHE = {}
+
+def get_db_connection():
+    return psycopg2.connect(DB_URL)
+
+def init_db():
     try:
-        with open("config.json") as f: return json.load(f)
-    except Exception: return {}
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("CREATE TABLE IF NOT EXISTS bot_settings (id VARCHAR(10) PRIMARY KEY, data JSONB)")
+        cur.execute("SELECT data FROM bot_settings WHERE id = 'main'")
+        row = cur.fetchone()
+        if not row:
+            # Migration from local config if empty
+            default_data = {}
+            try:
+                with open("config.json") as f:
+                    default_data = json.load(f)
+            except Exception:
+                pass
+            cur.execute("INSERT INTO bot_settings (id, data) VALUES ('main', %s)", (Json(default_data),))
+            conn.commit()
+            BOT_CONFIG_CACHE.update(default_data)
+            print("✅ DB Initialized with default/local config.")
+        else:
+            BOT_CONFIG_CACHE.update(row[0])
+            print("✅ Config loaded from PostgreSQL.")
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"❌ Error initializing DB: {e}", flush=True)
+
+# Run initialization synchronously before bot starts
+init_db()
+
+def load_config():
+    return BOT_CONFIG_CACHE
 
 def save_config(data):
-    with open("config.json", "w") as f: json.dump(data, f, indent=2)
+    # Update memory immediately
+    BOT_CONFIG_CACHE.update(data)
+    # Fire and forget DB update to not block async loop using threading
+    threading.Thread(target=_sync_save_db, args=(data,), daemon=True).start()
+
+def _sync_save_db(data):
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("UPDATE bot_settings SET data = %s WHERE id = 'main'", (Json(data),))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"❌ Error saving to DB: {e}")
+
+# Tarea para sincronizar desde la PC App
+@tasks.loop(seconds=15)
+async def db_sync_task():
+    try:
+        loop = asyncio.get_running_loop()
+        row_data = await loop.run_in_executor(None, _sync_fetch_db)
+        if row_data:
+            BOT_CONFIG_CACHE.clear()
+            BOT_CONFIG_CACHE.update(row_data)
+    except Exception as e:
+        pass
+
+def _sync_fetch_db():
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT data FROM bot_settings WHERE id = 'main'")
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        return row[0] if row else None
+    except:
+        return None
 
 # ── INTENTS ───────────────────────────────────────────────────
 intents = discord.Intents.all()
@@ -43,7 +119,11 @@ async def on_ready():
         print(f"🔄 Sincronizados {len(synced)} comandos slash", flush=True)
     except Exception as e:
         print(f"❌ Sync error: {e}", flush=True)
-    check_streams.start()
+    db_sync_task.start()
+    try:
+        check_streams.start()
+    except Exception:
+        pass
 
 # ═══════════════════════════════════════════════════════════════
 #  EVENTS
